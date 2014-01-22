@@ -28,6 +28,8 @@ import static com.xebialabs.restito.semantics.Condition.get;
 import static com.xebialabs.restito.semantics.Condition.post;
 import static com.xebialabs.restito.semantics.Condition.withHeader;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 
 /** Test fixture for {@link DockerClient}. */
 public class DockerClientTest {
@@ -64,6 +66,33 @@ public class DockerClientTest {
         assertEquals("0.6.6", version.getVersion());
         assertEquals("6d42040", version.getGitCommit());
         assertEquals("go1.2rc3", version.getGoVersion());
+        assertNull(version.getArch());
+        assertNull(version.getKernelVersion());
+        assertNull(version.getOs());
+    }
+
+    @Test
+    public void version_with_kernel_props() throws Exception {
+        whenHttp(_stubServer)
+                .match(
+                        get("/" + DockerClient.API_VERSION + "/version"),
+                        withHeader("Content-Type", "application/json"),
+                        withHeader("Accept", "application/json")
+                )
+                .then(
+                        contentType("application/json"),
+                        status(HttpStatus.OK_200),
+                        stringContent("{\"Version\":\"0.6.6\",\"GitCommit\":\"6d42040\",\"GoVersion\":\"go1.2rc3\", \"Arch\": \"amd64\", \"KernelVersion\": \"3.8.0-35-generic\", \"Os\": \"linux\"}")
+                );
+
+        DockerVersionResponse version = new DockerClient(_serverEndpoint).version();
+
+        assertEquals("0.6.6", version.getVersion());
+        assertEquals("6d42040", version.getGitCommit());
+        assertEquals("go1.2rc3", version.getGoVersion());
+        assertEquals("amd64", version.getArch());
+        assertEquals("3.8.0-35-generic", version.getKernelVersion());
+        assertEquals("linux", version.getOs());
     }
 
     @Test(expected = ClientHandlerException.class)
