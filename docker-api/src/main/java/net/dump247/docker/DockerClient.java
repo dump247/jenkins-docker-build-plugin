@@ -2,8 +2,6 @@ package net.dump247.docker;
 
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonToken;
-import com.fasterxml.jackson.core.TreeNode;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.jersey.api.client.Client;
 import com.sun.jersey.api.client.ClientHandlerException;
@@ -94,6 +92,23 @@ public class DockerClient {
      *                                (i.e. server is not listing on specified port, etc)
      */
     public void pullImage(PullImageRequest request) throws DockerException {
+        pullImage(request, ProgressMonitor.NULL);
+    }
+
+    /**
+     * Pull an image from the registry so it is available locally.
+     * <p/>
+     * This method blocks until the image is downloaded. As such, it may take a long time to
+     * complete.
+     *
+     * @param request  image pull options
+     * @param progress receive progress messages
+     * @throws DockerException        if the server reports an error
+     * @throws ImageNotFoundException if the requested image does not exist in the registry
+     * @throws ClientHandlerException if an error occurs sending the request or receiving the response
+     *                                (i.e. server is not listing on specified port, etc)
+     */
+    public void pullImage(PullImageRequest request, ProgressMonitor progress) throws DockerException {
         if (request == null) {
             throw new NullPointerException("request");
         }
@@ -102,11 +117,15 @@ public class DockerClient {
             throw new IllegalArgumentException("request.image is required");
         }
 
+        if (progress == null) {
+            throw new NullPointerException("progress");
+        }
+
         // There are a couple of oddities about this API:
         // 1. It appears to block until the image is downloaded, which may take a while
         // 2. The response body contains multiple json objects concatenated
         // 3. It always responds with 200, even if the response content indicates an error
-        JsonNode response;
+        ProgressMessage response;
 
         try {
             WebResource resource = resource("images/create");
@@ -118,7 +137,7 @@ public class DockerClient {
                 params.add("tag", request.getTag());
             }
 
-            response = readLastResponseObject(json(resource.queryParams(params)).post(ClientResponse.class));
+            response = readLastResponse(json(resource.queryParams(params)).post(ClientResponse.class), progress);
         } catch (IOException ex) {
             throw new DockerException("Error handling request: [uri=" + uri("images/create") + "]", ex);
         } catch (UniformInterfaceException ex) {
@@ -131,19 +150,12 @@ public class DockerClient {
         }
 
         // Check if the response contains an error message
-        JsonNode error = response.get("error");
-        if (error != null) {
-            JsonNode errorDetail = response.get("errorDetail");
-
-            if (errorDetail != null) {
-                JsonNode errorCode = errorDetail.get("code");
-
-                if (errorCode != null && errorCode.isIntegralNumber() && errorCode.asInt() == 404) {
-                    throw new ImageNotFoundException(format("Image %s does not exist.", request.getImage()));
-                }
+        if (response.isError()) {
+            if (response.getErrorDetail().getCode() == 404) {
+                throw new ImageNotFoundException(format("Image %s does not exist.", request.getImage()));
+            } else {
+                throw new DockerException(response.getMessage());
             }
-
-            throw new DockerException(error.asText());
         }
     }
 
@@ -164,7 +176,28 @@ public class DockerClient {
             throw new NullPointerException("image");
         }
 
-        pullImage(new PullImageRequest().withImage(image));
+        pullImage(new PullImageRequest().withImage(image), ProgressMonitor.NULL);
+    }
+
+    /**
+     * Pull an image from the registry so it is available locally.
+     * <p/>
+     * This method blocks until the image is downloaded. As such, it may take a long time to
+     * complete.
+     *
+     * @param image    name of the image to pull
+     * @param progress receive progress messages
+     * @throws DockerException        if the server reports an error
+     * @throws ImageNotFoundException if the requested image does not exist in the registry
+     * @throws ClientHandlerException if an error occurs sending the request or receiving the response
+     *                                (i.e. server is not listing on specified port, etc)
+     */
+    public void pullImage(String image, ProgressMonitor progress) throws DockerException {
+        if (image == null) {
+            throw new NullPointerException("image");
+        }
+
+        pullImage(new PullImageRequest().withImage(image), progress);
     }
 
     /**
@@ -650,15 +683,16 @@ public class DockerClient {
         }
     }
 
-    private JsonNode readLastResponseObject(ClientResponse clientResponse) throws IOException {
+    private ProgressMessage readLastResponse(ClientResponse clientResponse, ProgressMonitor progress) throws IOException {
         JsonParser jsonParser = new ObjectMapper().getFactory().createParser(clientResponse.getEntityInputStream());
         JsonToken jsonToken;
-        TreeNode responseObject = null;
+        ProgressMessage responseObject = null;
 
         while ((jsonToken = jsonParser.nextToken()) != null) {
             switch (jsonToken) {
                 case START_OBJECT:
-                    responseObject = jsonParser.readValueAsTree();
+                    responseObject = jsonParser.readValueAs(ProgressMessage.class);
+                    progress.progress(responseObject);
                     break;
 
                 default:
@@ -667,7 +701,7 @@ public class DockerClient {
             }
         }
 
-        return (JsonNode) responseObject;
+        return responseObject;
     }
 
     private URI uri(String path) {
