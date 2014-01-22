@@ -11,13 +11,10 @@ import hudson.model.Executor;
 import hudson.model.Node;
 import hudson.model.Queue;
 import hudson.remoting.Channel;
-import net.dump247.docker.DirectoryBinding;
 
 import java.io.IOException;
 import java.io.OutputStream;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -79,8 +76,8 @@ public class DockerLauncherDecorator extends LauncherDecorator {
             dockerRunner.setWorkingDirectory(starter.pwd().getRemote());
 
             Map<String, String> environment = getEnvironment(starter);
-            dockerRunner.setEnvironment(environment);
-            dockerRunner.setDirectoryBindings(getDirectoryBindings(starter, environment));
+            dockerRunner.setEnvironment(_jobConfig.getEnvironment(environment, System.getProperties()));
+            dockerRunner.setDirectoryBindings(_jobConfig.getDirectoryBindings(environment, System.getProperties()));
 
             OutputStream stdout = streamIfNull(starter.stdout(), NullOutputStream.INSTANCE);
             dockerRunner.setStdout(stdout);
@@ -110,20 +107,7 @@ public class DockerLauncherDecorator extends LauncherDecorator {
                 environment.put(parts[0], parts[1]);
             }
 
-            environment = _jobConfig.getEnvironment(environment, System.getProperties());
             return environment;
-        }
-
-        private List<DirectoryBinding> getDirectoryBindings(final ProcStarter starter, Map<String, String> environment) {
-            List<DirectoryBinding> directoryBindings = new ArrayList<DirectoryBinding>();
-
-            // Map the job working directory into the container
-            directoryBindings.add(DirectoryBinding.readWrite(starter.pwd().getRemote()));
-
-            // Map configured directory bindings
-            directoryBindings.addAll(_jobConfig.getDirectoryBindings(environment, System.getProperties()));
-
-            return directoryBindings;
         }
     }
 }

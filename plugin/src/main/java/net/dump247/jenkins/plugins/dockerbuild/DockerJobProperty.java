@@ -158,7 +158,8 @@ public class DockerJobProperty extends JobProperty<AbstractProject<?, ?>> {
         }
 
         public String defaultDirectoryBindings() {
-            return "${sys:java.io.tmpdir}";
+            return "${sys:java.io.tmpdir}\n" +
+                    "${env:WORKSPACE}";
         }
 
         public String defaultEnvironment() {
