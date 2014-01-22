@@ -1,0 +1,24 @@
+<div>
+    <p>
+        Map directory on host machine (machine running the jenkins agent) to a path in
+        the docker container.
+    </p>
+    <p>
+        Format: <i>hostPath[:containerPath[:access]]</i>
+    </p>
+    <p>
+        <i>hostPath</i> is the path on the jenkins agent to map into the container.
+    </p>
+    <p>
+        <i>containerPath</i> is the path to map to in the container. If not specified,
+        the <i>hostPath</i> is used.
+    </p>
+    <p>
+        <i>access</i> determines the access the container has to the mapped directory.
+        Can be <b>r</b> for read-only and <b>rw</b> for read-write. Default is read-write.
+    </p>
+    <p>
+        Environment variables can be referenced in the host or container paths with <i>${env:VARIABLE}</i>.
+        System properties can be referenced in the host or container paths with <i>${sys:system.property}</i>.
+    </p>
+</div>
