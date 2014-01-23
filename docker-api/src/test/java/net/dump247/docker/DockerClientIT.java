@@ -13,6 +13,7 @@ import java.util.List;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -77,6 +78,53 @@ public class DockerClientIT {
     @Test(expected = ImageNotFoundException.class)
     public void pullImage_that_does_not_exist() throws Exception {
         _client.pullImage("no-such-image");
+    }
+
+    @Test
+    public void pullImage_events() throws Exception {
+        final List<ProgressEvent> events = new ArrayList<ProgressEvent>();
+
+        _imageIds.add("stackbrew/ubuntu");
+        _client.pullImage("stackbrew/ubuntu", new ProgressListener() {
+            @Override
+            public void progress(final ProgressEvent event) {
+                events.add(event);
+            }
+        });
+
+        int progressEvents = 0;
+        int finalProgressEvents = 0;
+
+        int index = 0;
+        for (ProgressEvent event : events) {
+            // All events should be success events (no errors)
+            assertEquals("index: " + index, ProgressEvent.Code.Ok, event.getCode());
+
+            // Always should have a status message
+            assertTrue(event.getStatusMessage().length() > 0);
+
+            // Status message should not equal detail message (detail message is optional)
+            assertFalse(event.getDetailMessage().equals(event.getStatusMessage()));
+
+            // ID is not empty
+            assertTrue(event.getId().length() > 0);
+
+            // Progress info should be valid
+            assertTrue("index: " + index, event.getTotal() >= 0);
+            assertTrue("index: " + index, event.getCurrent() >= 0);
+            assertTrue("index: " + index, event.getTotal() >= event.getCurrent());
+
+            if (event.getTotal() > 0) {
+                progressEvents += 1;
+
+                if (event.getTotal() == event.getCurrent()) {
+                    finalProgressEvents += 1;
+                }
+            }
+        }
+
+        assertTrue(progressEvents > 0);
+        assertTrue(finalProgressEvents > 0);
     }
 
     @Test
