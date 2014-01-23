@@ -14,10 +14,10 @@ public interface ProgressListener {
     /** Drop all progress messages. */
     static final ProgressListener NULL = new ProgressListener() {
         @Override
-        public void progress(final ProgressEvent message) {
+        public void progress(final ProgressEvent event) {
             // Do nothing
         }
     };
 
-    void progress(ProgressEvent message);
+    void progress(ProgressEvent event);
 }

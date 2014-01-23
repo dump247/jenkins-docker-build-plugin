@@ -48,11 +48,11 @@ public class ProgressWriter implements ProgressListener {
     }
 
     @Override
-    public void progress(final ProgressEvent message) {
-        if (message.getCode() == ProgressEvent.Code.Ok) {
-            _writer.println(message);
+    public void progress(final ProgressEvent event) {
+        if (event.getCode() == ProgressEvent.Code.Ok) {
+            _writer.println(event);
         } else {
-            _errorWriter.println(message);
+            _errorWriter.println(event);
         }
     }
 
