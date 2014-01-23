@@ -29,7 +29,7 @@ import static java.lang.String.format;
  */
 public class DockerClient {
     /** Version of the docker API this client uses ({@value}). */
-    public static final String API_VERSION = "v1.6";
+    public static final String API_VERSION = "v1.8";
 
     /** URI of the default local docker API endpoint (http://localhost:4243). */
     public static final URI DEFAULT_LOCAL_URI = URI.create("http://localhost:4243");
