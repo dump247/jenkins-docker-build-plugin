@@ -5,7 +5,7 @@ import java.io.PrintWriter;
 import java.io.Writer;
 
 /** Writes progress messages to a stream. */
-public class ProgressWriter implements ProgressMonitor {
+public class ProgressWriter implements ProgressListener {
     private final PrintWriter _writer;
     private final PrintWriter _errorWriter;
 
@@ -48,11 +48,11 @@ public class ProgressWriter implements ProgressMonitor {
     }
 
     @Override
-    public void progress(final ProgressMessage message) {
-        if (message.isError()) {
-            _errorWriter.println(message);
-        } else {
+    public void progress(final ProgressEvent message) {
+        if (message.getCode() == ProgressEvent.Code.Ok) {
             _writer.println(message);
+        } else {
+            _errorWriter.println(message);
         }
     }
 

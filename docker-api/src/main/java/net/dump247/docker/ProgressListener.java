@@ -1,23 +1,23 @@
 package net.dump247.docker;
 
 /** Receive progress events from docker operations. */
-public interface ProgressMonitor {
+public interface ProgressListener {
     /** Write all normal progress messages to stdout and error messages to stderr. */
-    static final ProgressMonitor STDOUT = new ProgressWriter(System.out);
+    static final ProgressListener STDOUT = new ProgressWriter(System.out);
 
     /** Write all normal progress messages to stdout and error messages to stderr. */
-    static final ProgressMonitor STDERR = new ProgressWriter(System.err);
+    static final ProgressListener STDERR = new ProgressWriter(System.err);
 
     /** Write all normal progress messages to stdout and error messages to stderr. */
-    static final ProgressMonitor OUTPUT = new ProgressWriter(System.out, System.err);
+    static final ProgressListener OUTPUT = new ProgressWriter(System.out, System.err);
 
     /** Drop all progress messages. */
-    static final ProgressMonitor NULL = new ProgressMonitor() {
+    static final ProgressListener NULL = new ProgressListener() {
         @Override
-        public void progress(final ProgressMessage message) {
+        public void progress(final ProgressEvent message) {
             // Do nothing
         }
     };
 
-    void progress(ProgressMessage message);
+    void progress(ProgressEvent message);
 }

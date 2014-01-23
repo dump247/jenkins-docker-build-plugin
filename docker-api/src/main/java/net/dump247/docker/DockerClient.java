@@ -92,7 +92,7 @@ public class DockerClient {
      *                                (i.e. server is not listing on specified port, etc)
      */
     public void pullImage(PullImageRequest request) throws DockerException {
-        pullImage(request, ProgressMonitor.NULL);
+        pullImage(request, ProgressListener.NULL);
     }
 
     /**
@@ -108,7 +108,7 @@ public class DockerClient {
      * @throws ClientHandlerException if an error occurs sending the request or receiving the response
      *                                (i.e. server is not listing on specified port, etc)
      */
-    public void pullImage(PullImageRequest request, ProgressMonitor progress) throws DockerException {
+    public void pullImage(PullImageRequest request, ProgressListener progress) throws DockerException {
         if (request == null) {
             throw new NullPointerException("request");
         }
@@ -125,7 +125,7 @@ public class DockerClient {
         // 1. It appears to block until the image is downloaded, which may take a while
         // 2. The response body contains multiple json objects concatenated
         // 3. It always responds with 200, even if the response content indicates an error
-        ProgressMessage response;
+        ProgressEvent response;
 
         try {
             WebResource resource = resource("images/create");
@@ -150,12 +150,16 @@ public class DockerClient {
         }
 
         // Check if the response contains an error message
-        if (response.isError()) {
-            if (response.getErrorDetail().getCode() == 404) {
+        switch (response.getCode()) {
+            case Ok:
+                // Operation was successful
+                break;
+
+            case NotFound:
                 throw new ImageNotFoundException(format("Image %s does not exist.", request.getImage()));
-            } else {
-                throw new DockerException(response.getMessage());
-            }
+
+            default:
+                throw new DockerException(response.getStatusMessage());
         }
     }
 
@@ -176,7 +180,7 @@ public class DockerClient {
             throw new NullPointerException("image");
         }
 
-        pullImage(new PullImageRequest().withImage(image), ProgressMonitor.NULL);
+        pullImage(new PullImageRequest().withImage(image), ProgressListener.NULL);
     }
 
     /**
@@ -192,7 +196,7 @@ public class DockerClient {
      * @throws ClientHandlerException if an error occurs sending the request or receiving the response
      *                                (i.e. server is not listing on specified port, etc)
      */
-    public void pullImage(String image, ProgressMonitor progress) throws DockerException {
+    public void pullImage(String image, ProgressListener progress) throws DockerException {
         if (image == null) {
             throw new NullPointerException("image");
         }
@@ -683,15 +687,15 @@ public class DockerClient {
         }
     }
 
-    private ProgressMessage readLastResponse(ClientResponse clientResponse, ProgressMonitor progress) throws IOException {
+    private ProgressEvent readLastResponse(ClientResponse clientResponse, ProgressListener progress) throws IOException {
         JsonParser jsonParser = new ObjectMapper().getFactory().createParser(clientResponse.getEntityInputStream());
         JsonToken jsonToken;
-        ProgressMessage responseObject = null;
+        ProgressEvent responseObject = null;
 
         while ((jsonToken = jsonParser.nextToken()) != null) {
             switch (jsonToken) {
                 case START_OBJECT:
-                    responseObject = jsonParser.readValueAs(ProgressMessage.class);
+                    responseObject = jsonParser.readValueAs(ProgressEvent.class);
                     progress.progress(responseObject);
                     break;
 
