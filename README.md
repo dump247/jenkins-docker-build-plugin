@@ -8,7 +8,10 @@ Docker API Integration Tests
 
 ## Start Docker API
 
-This only necessary once and can be run in any directory. Must have vagrant installed.
+This only necessary once. Must have vagrant installed.
+
+This must be run in the project directory (i.e. the directory that contains
+this README file).
 
 ```bash
 wget https://github.com/dotcloud/docker/blob/master/Dockerfile
@@ -21,6 +24,5 @@ vagrant ssh --command 'sudo service docker restart'
 ## Run Integration Tests
 
 ```bash
-cd docker-api/
 mvn verify -Pintegration
 ```

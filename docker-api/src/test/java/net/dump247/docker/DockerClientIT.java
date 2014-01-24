@@ -14,7 +14,9 @@ import java.util.List;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
+import static org.junit.matchers.JUnitMatchers.containsString;
 
 /**
  * Integration tests for {@link DockerClient}.
@@ -183,6 +185,61 @@ public class DockerClientIT {
                         .withEnvironmentVar("MY_VAR", "the var value")));
     }
 
+    @Test
+    public void bind_directory() throws Exception {
+        String containerId = createContainer(new CreateContainerRequest()
+                .withImage(UBUNTU)
+                .withAttachStderr(true)
+                .withAttachStdout(true)
+                .withVolumes("/my/vagrant")
+                .withCommand("/bin/bash", "-c", "if [ ! -f /my/vagrant/LICENSE ]; then exit 1; fi"));
+
+        _client.startContainer(new StartContainerRequest()
+                .withContainerId(containerId)
+                .withBinding("/vagrant", "/my/vagrant"));
+        assertEquals(0, _client.waitContainer(containerId).getStatusCode());
+    }
+
+    @Test
+    public void bind_directory_read_only() throws Exception {
+        String containerId = createContainer(new CreateContainerRequest()
+                .withImage(UBUNTU)
+                .withAttachStderr(true)
+                .withAttachStdout(true)
+                .withVolumes("/my/vagrant")
+                .withCommand("/bin/bash", "-c", "echo data > /my/vagrant/testfile"));
+
+        OutputReader reader = new OutputReader(containerId);
+
+        _client.startContainer(new StartContainerRequest()
+                .withContainerId(containerId)
+                .withBinding("/vagrant", "/my/vagrant", DirectoryBinding.Access.READ));
+        assertEquals(1, _client.waitContainer(containerId).getStatusCode());
+
+        String[] output = reader.join();
+
+        assertEquals("", output[0]);
+        assertThat(output[1], containsString("Read-only file system"));
+    }
+
+    @Test
+    public void bind_directory_read_write() throws Exception {
+        String containerId = createContainer(new CreateContainerRequest()
+                .withImage(UBUNTU)
+                .withAttachStderr(true)
+                .withAttachStdout(true)
+                .withVolumes("/my/vagrant")
+                .withCommand("/bin/bash", "-c", "" +
+                        "echo data > /my/vagrant/testfile; " +
+                        "if [ ! -f /my/vagrant/testfile ]; then exit 1; fi; " +
+                        "rm /my/vagrant/testfile"));
+
+        _client.startContainer(new StartContainerRequest()
+                .withContainerId(containerId)
+                .withBinding("/vagrant", "/my/vagrant", DirectoryBinding.Access.READ_WRITE));
+        assertEquals(0, _client.waitContainer(containerId).getStatusCode());
+    }
+
     private String createContainer(CreateContainerRequest request) throws DockerException {
         _client.pullImage(request.getImage());
         _imageIds.add(request.getImage());
@@ -193,32 +250,43 @@ public class DockerClientIT {
         return response.getContainerId();
     }
 
-    private void waitForContainer(String containerId) throws DockerException {
-        _client.startContainer(containerId);
-        assertEquals(0, _client.waitContainer(containerId).getStatusCode());
-    }
-
     private String[] runCommand(CreateContainerRequest request) throws Exception {
         String containerId = createContainer(request
                 .withImage(UBUNTU)
                 .withAttachStderr(true)
                 .withAttachStdout(true));
 
-        AttachResponse attachResponse = _client.attachContainer(containerId);
+        OutputReader reader = new OutputReader(containerId);
 
-        ByteArrayOutputStream stdoutBuffer = new ByteArrayOutputStream();
-        StreamCopyThread stdoutCopy = new StreamCopyThread("stdoutCopier", attachResponse.getStdout(), stdoutBuffer);
-        stdoutCopy.start();
+        _client.startContainer(containerId);
+        assertEquals(0, _client.waitContainer(containerId).getStatusCode());
 
-        ByteArrayOutputStream stderrBuffer = new ByteArrayOutputStream();
-        StreamCopyThread stderrCopy = new StreamCopyThread("stderrCopier", attachResponse.getStderr(), stderrBuffer);
-        stderrCopy.start();
+        return reader.join();
+    }
 
-        waitForContainer(containerId);
+    private class OutputReader {
+        private StreamCopyThread _stdoutCopyThread;
+        private ByteArrayOutputStream _stdoutBuffer;
+        private StreamCopyThread _stderrCopyThread;
+        private ByteArrayOutputStream _stderrBuffer;
 
-        stdoutCopy.join();
-        stderrCopy.join();
+        public OutputReader(String containerId) throws DockerException {
+            AttachResponse attachResponse = _client.attachContainer(containerId);
 
-        return new String[] {new String(stdoutBuffer.toByteArray()), new String(stderrBuffer.toByteArray())};
+            _stdoutBuffer = new ByteArrayOutputStream();
+            _stdoutCopyThread = new StreamCopyThread("stdoutCopier", attachResponse.getStdout(), _stdoutBuffer);
+            _stdoutCopyThread.start();
+
+            _stderrBuffer = new ByteArrayOutputStream();
+            _stderrCopyThread = new StreamCopyThread("stderrCopier", attachResponse.getStderr(), _stderrBuffer);
+            _stderrCopyThread.start();
+        }
+
+        public String[] join() throws Exception {
+            _stdoutCopyThread.join();
+            _stderrCopyThread.join();
+
+            return new String[] {new String(_stdoutBuffer.toByteArray()), new String(_stderrBuffer.toByteArray())};
+        }
     }
 }
