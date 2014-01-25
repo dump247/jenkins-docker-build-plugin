@@ -95,7 +95,8 @@ public class DockerLauncherDecorator extends LauncherDecorator {
 
         @Override
         public void kill(final Map<String, String> modelEnvVars) throws IOException, InterruptedException {
-            throw new UnsupportedOperationException();
+            // TODO implement this method
+            // It gets called after a job runs
         }
 
         private Map<String, String> getEnvironment(final ProcStarter starter) throws IOException {
