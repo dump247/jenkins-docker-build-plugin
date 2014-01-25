@@ -7,6 +7,7 @@ import hudson.model.JobProperty;
 import hudson.model.JobPropertyDescriptor;
 import hudson.util.FormValidation;
 import net.dump247.docker.DirectoryBinding;
+import org.apache.commons.lang.text.StrSubstitutor;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.QueryParameter;
 
@@ -18,26 +19,31 @@ import java.util.Properties;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Strings.isNullOrEmpty;
 import static java.lang.String.format;
 
 /** Properties that configure the Docker container for a job. */
 public class DockerJobProperty extends JobProperty<AbstractProject<?, ?>> {
-    private static final Pattern VAR_PATTERN = Pattern.compile("\\$\\{(.*?)\\}");
+    private static final Pattern VAR_REF_TEST_PATTERN = Pattern.compile("\\$.*?(?:\\}|$)");
+    private static final String UNSET_MARKER = "unset ";
 
     private final String _image;
     private final String _directoryBindings;
+    private final String _environment;
 
     /**
      * Initialize a new instance.
      *
      * @param image             name of the docker image to run the job on
      * @param directoryBindings host to container directory bindings, one per line
+     * @param environment       job environment
      */
     @DataBoundConstructor
-    public DockerJobProperty(final String image, final String directoryBindings) {
+    public DockerJobProperty(final String image, final String directoryBindings, final String environment) {
         _image = image;
         _directoryBindings = directoryBindings;
+        _environment = environment;
     }
 
     /**
@@ -50,6 +56,24 @@ public class DockerJobProperty extends JobProperty<AbstractProject<?, ?>> {
     }
 
     /**
+     * Get directory bindings definition.
+     *
+     * @return directory bindings descriptor string
+     */
+    public String getDirectoryBindings() {
+        return _directoryBindings;
+    }
+
+    /**
+     * Get environment definition.
+     *
+     * @return environment descriptor string.
+     */
+    public String getEnvironment() {
+        return _environment;
+    }
+
+    /**
      * Get the configured directory bindings.
      *
      * @param environment      environment variables to substitute in bindings
@@ -57,13 +81,24 @@ public class DockerJobProperty extends JobProperty<AbstractProject<?, ?>> {
      * @return directory bindings
      */
     public List<DirectoryBinding> getDirectoryBindings(Map<String, String> environment, Properties systemProperties) {
+        checkNotNull(environment);
+        checkNotNull(systemProperties);
+
         List<DirectoryBinding> bindings = new ArrayList<DirectoryBinding>();
+        StrSubstitutor substitutor = createSubstitutor(environment, systemProperties);
 
         for (String line : _directoryBindings.split("\n")) {
-            String[] lineParts = line.split(":");
+            line = line.trim();
+
+            // Ignore empty lines and comments
+            if (line.length() == 0 || line.startsWith("#")) {
+                continue;
+            }
+
+            String[] lineParts = line.split(":", 3);
             String hostPath = lineParts[0].trim();
-            String containerPath = lineParts.length > 1 ? lineParts[1].trim() : "";
-            String accessStr = lineParts.length > 2 ? lineParts[2].trim() : "";
+            String containerPath = get(lineParts, 1, "").trim();
+            String accessStr = get(lineParts, 2, "").trim();
 
             DirectoryBinding.Access access = DirectoryBinding.Access.READ_WRITE;
             if ("r".equals(accessStr)) {
@@ -74,8 +109,8 @@ public class DockerJobProperty extends JobProperty<AbstractProject<?, ?>> {
                 containerPath = hostPath;
             }
 
-            hostPath = replaceVars(environment, systemProperties, hostPath);
-            containerPath = replaceVars(environment, systemProperties, containerPath);
+            hostPath = substitutor.replace(hostPath);
+            containerPath = substitutor.replace(containerPath);
             bindings.add(new DirectoryBinding(hostPath, containerPath, access));
         }
 
@@ -90,19 +125,26 @@ public class DockerJobProperty extends JobProperty<AbstractProject<?, ?>> {
      * @return map from variable name to value
      */
     public Map<String, String> getEnvironment(Map<String, String> environment, Properties systemProperties) {
+        checkNotNull(environment);
+        checkNotNull(systemProperties);
+
+        StrSubstitutor substitutor = createSubstitutor(environment, systemProperties);
         Map<String, String> newEnvironment = new HashMap<String, String>(environment);
 
-        for (String line : _directoryBindings.split("\n")) {
+        for (String line : _environment.split("\n")) {
             line = line.trim();
 
-            if (line.startsWith("!")) {
-                newEnvironment.remove(line.substring(1).trim());
+            // Ignore empty lines and comments
+            if (line.length() == 0 || line.startsWith("#")) {
+                continue;
+            }
+
+            if (line.startsWith(UNSET_MARKER)) {
+                newEnvironment.remove(line.substring(UNSET_MARKER.length()).trim());
             } else {
                 String[] lineParts = line.split("=", 2);
                 String varName = lineParts[0].trim();
-                String varValue = lineParts.length > 1 ? lineParts[1].trim() : "";
-
-                varValue = replaceVars(newEnvironment, systemProperties, varValue);
+                String varValue = substitutor.replace(lineParts[1].trim());
                 newEnvironment.put(varName, varValue);
             }
         }
@@ -110,39 +152,12 @@ public class DockerJobProperty extends JobProperty<AbstractProject<?, ?>> {
         return newEnvironment;
     }
 
-    private static String replaceVars(Map<String, String> environment, Properties systemProperties, String value) {
-        Matcher matcher = VAR_PATTERN.matcher(value);
-        StringBuffer buffer = new StringBuffer();
-
-        while (matcher.find()) {
-            String[] varParts = matcher.group(1).split(":");
-            String varType = varParts[0];
-            String varName = varParts[1];
-
-            if ("sys".equals(varType)) {
-                appendReplacement(matcher, buffer, systemProperties.getProperty(varName));
-            } else if ("env".equals(varType)) {
-                appendReplacement(matcher, buffer, environment.get(varName));
-            } else {
-                matcher.appendReplacement(buffer, "");
-            }
-        }
-
-        matcher.appendTail(buffer);
-        return buffer.toString();
+    private static StrSubstitutor createSubstitutor(Map<String, String> environment, Properties systemProperties) {
+        return new StrSubstitutor(new JobConfigStrLookup(environment, systemProperties));
     }
 
-    private static void appendReplacement(Matcher matcher, StringBuffer buffer, String replacement) {
-        replacement = replacement == null ? "" : replacement;
-        matcher.appendReplacement(buffer, replacement.replace("\\", "\\\\").replace("$", "\\$"));
-    }
-
-    private static void appendLine(StringBuilder buffer, String format, Object... args) {
-        if (buffer.length() > 0) {
-            buffer.append("\n");
-        }
-
-        buffer.append(format(format, args));
+    private static String get(String[] array, int index, String defaultValue) {
+        return index < array.length ? array[index] : defaultValue;
     }
 
     @Extension
@@ -158,24 +173,29 @@ public class DockerJobProperty extends JobProperty<AbstractProject<?, ?>> {
         }
 
         public String defaultDirectoryBindings() {
-            return "${sys:java.io.tmpdir}\n" +
-                    "${env:WORKSPACE}";
+            return "" +
+                    "# Bind agent temp dir because jenkins generates build step scripts here\n" +
+                    "${sys.java.io.tmpdir}\n" +
+                    "\n" +
+                    "# Job workspace directory\n" +
+                    "${env.WORKSPACE}";
         }
 
         public String defaultEnvironment() {
-            return "!-\n" +
-                    "!CLASSPATH\n" +
-                    "!HOME\n" +
-                    "!HUDSON_HOME\n" +
-                    "!JENKINS_HOME\n" +
-                    "!LD_LIBRARY_PATH\n" +
-                    "!MAIL\n" +
-                    "!PATH\n" +
-                    "!PWD\n" +
-                    "!SHELL\n" +
-                    "!SHLVL\n" +
-                    "!TERM\n" +
-                    "!USER";
+            return "" +
+                    "unset -\n" +
+                    "unset CLASSPATH\n" +
+                    "unset HOME\n" +
+                    "unset HUDSON_HOME\n" +
+                    "unset JENKINS_HOME\n" +
+                    "unset LD_LIBRARY_PATH\n" +
+                    "unset MAIL\n" +
+                    "unset PATH\n" +
+                    "unset PWD\n" +
+                    "unset SHELL\n" +
+                    "unset SHLVL\n" +
+                    "unset TERM\n" +
+                    "unset USER";
         }
 
         public FormValidation doCheckEnvironment(@QueryParameter String value) {
@@ -184,48 +204,43 @@ public class DockerJobProperty extends JobProperty<AbstractProject<?, ?>> {
             }
 
             int lineNum = 0;
-            StringBuilder error = new StringBuilder();
 
             for (String line : value.split("\n")) {
                 lineNum += 1;
                 line = line.trim();
 
-                if (line.length() == 0) {
+                // Ignore blank lines and comments
+                if (line.length() == 0 || line.startsWith("#")) {
                     continue;
                 }
 
-                if (line.startsWith("!")) {
-                    String varName = line.substring(1).trim();
+                if (line.startsWith(UNSET_MARKER)) {
+                    String varName = line.substring(UNSET_MARKER.length()).trim();
 
                     if (varName.length() == 0) {
-                        appendLine(error, "Line %d: Missing variable name", lineNum);
-                        continue;
+                        return error(lineNum, "Missing variable name");
                     }
                 } else {
                     String[] lineParts = line.split("=");
 
                     if (lineParts.length != 2) {
-                        appendLine(error, "Line %d: Invalid variable assignment %s", lineNum, line);
-                        continue;
+                        return error(lineNum, "Invalid variable assignment in %s", line);
                     }
 
                     String varName = lineParts[0].trim();
                     String varValue = lineParts[1].trim();
 
                     if (varName.length() == 0) {
-                        appendLine(error, "Line %d: Missing variable name in %s", lineNum, line);
-                        continue;
+                        return error(lineNum, "Missing left hand side of assignment in %s", line);
                     }
 
-                    if (!checkVariables(lineNum, varValue, error)) {
-                        continue;
+                    if (!validateVariables(varValue)) {
+                        return error(lineNum, "Invalid variable reference on right hand side in %s", line);
                     }
                 }
             }
 
-            return error.length() > 0
-                    ? FormValidation.error(error.toString())
-                    : FormValidation.ok();
+            return FormValidation.ok();
         }
 
         public FormValidation doCheckDirectoryBindings(@QueryParameter String value) {
@@ -234,69 +249,72 @@ public class DockerJobProperty extends JobProperty<AbstractProject<?, ?>> {
             }
 
             int lineNum = 0;
-            StringBuilder error = new StringBuilder();
 
             for (String line : value.split("\n")) {
                 lineNum += 1;
                 line = line.trim();
 
-                if (line.length() == 0) {
+                // Ignore empty lines and comments
+                if (line.length() == 0 || line.startsWith("#")) {
                     continue;
                 }
 
                 String[] lineParts = line.split(":");
 
                 if (lineParts.length > 3) {
-                    appendLine(error, "Line %d: Too many colons in %s", lineNum, line);
-                    continue;
+                    return error(lineNum, "Too many colons in %s", line);
                 }
 
                 String hostPath = lineParts[0].trim();
-                String containerPath = lineParts.length > 1 ? lineParts[1].trim() : "";
-                String access = lineParts.length > 2 ? lineParts[2].trim() : "";
+                String containerPath = get(lineParts, 1, "").trim();
+                String access = get(lineParts, 2, "").trim();
 
                 if (hostPath.length() == 0) {
-                    appendLine(error, "Line %d: Missing host path in %s", lineNum, line);
-                    continue;
-                } else if (!checkVariables(lineNum, hostPath, error)) {
-                    continue;
+                    return error(lineNum, "Missing host path in %s", line);
+                } else if (!validateVariables(hostPath)) {
+                    return error(lineNum, "Invalid variable reference in host path of %s", line);
                 }
 
-                if (!checkVariables(lineNum, containerPath, error)) {
-                    continue;
+                if (!validateVariables(containerPath)) {
+                    return error(lineNum, "Invalid variable reference in container path of %s", line);
                 }
 
                 if (!"".equals(access) && !"r".equals(access) && !"rw".equals(access)) {
-                    appendLine(error, "Line %d: Invalid access value in %s", lineNum, line);
-                    continue;
+                    return error(lineNum, "Invalid access value in %s", line);
                 }
             }
 
-            return error.length() > 0
-                    ? FormValidation.error(error.toString())
-                    : FormValidation.ok();
+            return FormValidation.ok();
         }
 
-        private boolean checkVariables(int lineNum, String value, StringBuilder error) {
-            Matcher matcher = VAR_PATTERN.matcher(value);
+        private boolean validateVariables(String value) {
+            Matcher matcher = VAR_REF_TEST_PATTERN.matcher(value);
 
             while (matcher.find()) {
-                String content = matcher.group(1);
+                String varRef = matcher.group();
 
-                if (!content.startsWith("env:") || !content.startsWith("sys:")) {
-                    appendLine(error, "Line %d: Invalid variable reference %s", lineNum, value);
+                // Must be at least: ${A}
+                if (varRef.length() < 4) {
                     return false;
                 }
 
-                String varName = content.substring(0, content.indexOf(":")).trim();
+                // Start and end with curly braces
+                if (varRef.charAt(1) != '{' || varRef.charAt(varRef.length() - 1) != '}') {
+                    return false;
+                }
+
+                String varName = varRef.substring(2, varRef.length() - 2).trim();
 
                 if (varName.length() == 0) {
-                    appendLine(error, "Line %d: Missing variable name in %s", lineNum, value);
                     return false;
                 }
             }
 
             return true;
+        }
+
+        private FormValidation error(int line, String format, Object... args) {
+            return FormValidation.error("Line " + line + ": " + format(format, args));
         }
     }
 }
