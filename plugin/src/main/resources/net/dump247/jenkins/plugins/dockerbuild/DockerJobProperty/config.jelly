@@ -4,10 +4,10 @@
             <f:textbox />
         </f:entry>
         <f:advanced>
-            <f:entry title="Environment" field="environment" description="Environment variables to set in container.">
+            <f:entry title="Environment" field="environment">
                 <f:textarea default="${descriptor.defaultEnvironment()}" />
             </f:entry>
-            <f:entry title="Directory Bindings" field="directoryBindings" description="Map host directories into the docker container.">
+            <f:entry title="Directory Bindings" field="directoryBindings">
                 <f:textarea default="${descriptor.defaultDirectoryBindings()}" />
             </f:entry>
         </f:advanced>

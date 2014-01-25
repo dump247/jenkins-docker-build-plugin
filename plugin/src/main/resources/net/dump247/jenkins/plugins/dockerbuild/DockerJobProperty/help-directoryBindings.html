@@ -11,14 +11,36 @@
     </p>
     <p>
         <i>containerPath</i> is the path to map to in the container. If not specified,
-        the <i>hostPath</i> is used.
+        the <i>hostPath</i> is used. The directory does not need to exist in the container
+        image. It will be created if needed. If the path already exists, the new file system
+        will hide the existing directory.
     </p>
     <p>
         <i>access</i> determines the access the container has to the mapped directory.
         Can be <b>r</b> for read-only and <b>rw</b> for read-write. Default is read-write.
     </p>
     <p>
-        Environment variables can be referenced in the host or container paths with <i>${env:VARIABLE}</i>.
-        System properties can be referenced in the host or container paths with <i>${sys:system.property}</i>.
+        Blank lines or lines that start with # are ignored.
+    </p>
+    <p>
+        Environment variables from the jenkins agent can be referenced in the host or container paths with
+        <i>${VARIABLE}</i> or <i>${env.VARIABLE}</i>. System properties from the jenkins agent can be referenced in
+        the host or container paths with <i>${sys.variable}</i>.
+    </p>
+    <p>
+        Examples:
+        <div style="white-space:pre; font-family: monospace">
+    # Same as /host/path:/host/path:rw
+    /host/path
+
+    # Same as /host/path:/host/path:r
+    /host/path::r
+
+    # Same as /host/path:/container/path:rw
+    /host/path:/container/path
+
+    # Makes /container/path read-only for the container
+    /host/path:/container/path:r
+        </div>
     </p>
 </div>
