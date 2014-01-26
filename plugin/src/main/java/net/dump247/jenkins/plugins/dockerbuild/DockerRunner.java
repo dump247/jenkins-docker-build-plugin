@@ -8,7 +8,6 @@ import net.dump247.docker.CreateContainerResponse;
 import net.dump247.docker.DirectoryBinding;
 import net.dump247.docker.DockerClient;
 import net.dump247.docker.DockerException;
-import net.dump247.docker.ImageNotFoundException;
 import net.dump247.docker.StartContainerRequest;
 
 import java.io.OutputStream;
@@ -21,7 +20,6 @@ import java.util.concurrent.Callable;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import static com.google.common.io.Closeables.closeQuietly;
 import static java.lang.String.format;
 
 /** Runs a command in a docker container. */
@@ -59,20 +57,19 @@ public class DockerRunner implements Callable<Integer> {
 
     public Integer call() throws Exception {
         String containerId = createContainer();
-        AttachResponse attachResponse = null;
         StreamCopyThread stdOutCopy = null;
         StreamCopyThread stdErrCopy = null;
 
         try {
-            LOG.info(format("Running job command in container: [container=%s]", containerId));
+            LOG.fine(format("Running job command in container: [container=%s]", containerId));
 
             LOG.fine("Starting container...");
             getDockerClient().startContainer(new StartContainerRequest()
                     .withContainerId(containerId)
                     .withBindings(_directoryBindings));
 
-            LOG.info("Attaching to container stdin/stdout...");
-            attachResponse = getDockerClient().attachContainer(containerId);
+            LOG.fine("Attaching to container stdin/stdout...");
+            AttachResponse attachResponse = getDockerClient().attachContainer(containerId);
 
             stdOutCopy = new StreamCopyThread("stdout copier", attachResponse.getStdout(), _stdout);
             stdOutCopy.start();
@@ -83,26 +80,24 @@ public class DockerRunner implements Callable<Integer> {
             LOG.fine("Waiting for container...");
             int statusCode = getDockerClient().waitContainer(containerId).getStatusCode();
 
-            LOG.info(format("Command completed: [status=%d]", statusCode));
+            LOG.fine(format("Command completed: [status=%d]", statusCode));
             return statusCode;
         } finally {
             if (stdOutCopy != null) {
                 stdOutCopy.join(2 * 1000);
                 stdOutCopy.interrupt();
-                closeQuietly(attachResponse.getStdout());
             }
 
             if (stdErrCopy != null) {
                 stdErrCopy.join(100);
                 stdErrCopy.interrupt();
-                closeQuietly(attachResponse.getStderr());
             }
 
             try {
                 // Best effort cleanup. Removing the container is not
                 // required to complete the job. The containers should be very small
                 // so there is only small risk if they fail to get deleted.
-                LOG.info(format("Removing job container: [container=%s]", containerId));
+                LOG.fine(format("Removing job container: [container=%s]", containerId));
                 getDockerClient().removeContainer(containerId);
             } catch (Exception ex) {
                 LOG.log(Level.WARNING, format("Error removing container: [container=%s]", containerId), ex);
@@ -277,8 +272,10 @@ public class DockerRunner implements Callable<Integer> {
     }
 
     private String createContainer() throws DockerException {
-        String containerId;
+        LOG.fine(format("Creating container: [image=%s]", getImage()));
+
         CreateContainerRequest createContainerRequest = new CreateContainerRequest()
+                .withImage(_image)
                 .withCommand(_command)
                 .withWorkingDir(_workingDirectory)
                 .withEnvironment(_environment)
@@ -292,31 +289,13 @@ public class DockerRunner implements Callable<Integer> {
                 volumes.add(new ContainerVolume(binding.getContainerPath()));
             }
 
-            createContainerRequest.withVolumes(volumes);
+            createContainerRequest.setVolumes(volumes);
         }
 
-        // v1.6
-        // Pulling the image is expensive (up to 10 secs) even if the image
-        // already exists locally. However, the create container call fails
-        // quickly if the image does not exist locally. Attempt to pull
-        // the image only if create container can't find the image locally.
-
-        try {
-            containerId = createContainer(createContainerRequest.withImage(_image));
-        } catch (ImageNotFoundException ex2) {
-            LOG.info(format("Project image not found locally. Pulling project image: [image=%s]", _image));
-            getDockerClient().pullImage(_image);
-            containerId = createContainer(createContainerRequest.withImage(_image));
-        }
-
-        return containerId;
-    }
-
-    private String createContainer(CreateContainerRequest request) throws DockerException {
-        CreateContainerResponse response = getDockerClient().createContainer(request);
+        CreateContainerResponse response = getDockerClient().createContainer(createContainerRequest);
 
         for (String warning : response.getWarnings()) {
-            LOG.warning(format("%s: [image=%s]", warning, request.getImage()));
+            LOG.warning(format("%s: [image=%s]", warning, createContainerRequest.getImage()));
         }
 
         return response.getContainerId();

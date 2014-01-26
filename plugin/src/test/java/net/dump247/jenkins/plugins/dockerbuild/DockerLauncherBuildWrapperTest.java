@@ -11,29 +11,29 @@ import java.util.Properties;
 
 import static org.junit.Assert.assertEquals;
 
-/** Test fixture for {@link DockerJobProperty}. */
-public class DockerJobPropertyTest {
+/** Test fixture for {@link DockerLauncherBuildWrapper}. */
+public class DockerLauncherBuildWrapperTest {
     @Test
     public void descriptor_doCheckEnvironment_empty_string() {
-        DockerJobProperty.Descriptor descriptor = new DockerJobProperty.Descriptor();
+        DockerLauncherBuildWrapper.Descriptor descriptor = new DockerLauncherBuildWrapper.Descriptor();
         assertEquals(FormValidation.Kind.OK, descriptor.doCheckEnvironment("").kind);
     }
 
     @Test
     public void descriptor_doCheckEnvironment_remove_var() {
-        DockerJobProperty.Descriptor descriptor = new DockerJobProperty.Descriptor();
+        DockerLauncherBuildWrapper.Descriptor descriptor = new DockerLauncherBuildWrapper.Descriptor();
         assertEquals(FormValidation.Kind.OK, descriptor.doCheckEnvironment("unset SOME_VAR").kind);
     }
 
     @Test
     public void descriptor_doCheckEnvironment_set_var_to_static_value() {
-        DockerJobProperty.Descriptor descriptor = new DockerJobProperty.Descriptor();
+        DockerLauncherBuildWrapper.Descriptor descriptor = new DockerLauncherBuildWrapper.Descriptor();
         assertEquals(FormValidation.Kind.OK, descriptor.doCheckEnvironment("SOME_VAR=value").kind);
     }
 
     @Test
     public void getEnvironment() {
-        DockerJobProperty property = new DockerJobProperty("image", "", "" +
+        DockerLauncherBuildWrapper property = new DockerLauncherBuildWrapper("image", "", "" +
                 "\n" +
                 "# comment\n" +
                 "unset REMOVE_FROM_ENV\n" +
@@ -71,21 +71,21 @@ public class DockerJobPropertyTest {
     @Test
     public void getEnvironment_key_not_found() {
         try {
-            new DockerJobProperty("image", "", "no_key=${no_such_key}")
+            new DockerLauncherBuildWrapper("image", "", "no_key=${no_such_key}")
                     .getEnvironment(ImmutableMap.<String, String>of(), new Properties());
         } catch (RuntimeException ex) {
             assertEquals("Key not found: no_such_key", ex.getMessage());
         }
 
         try {
-            new DockerJobProperty("image", "", "no_key=${env.no_such_key}")
+            new DockerLauncherBuildWrapper("image", "", "no_key=${env.no_such_key}")
                     .getEnvironment(ImmutableMap.<String, String>of(), new Properties());
         } catch (RuntimeException ex) {
             assertEquals("Key not found: env.no_such_key", ex.getMessage());
         }
 
         try {
-            new DockerJobProperty("image", "", "no_key=${sys.no_such_key}")
+            new DockerLauncherBuildWrapper("image", "", "no_key=${sys.no_such_key}")
                     .getEnvironment(ImmutableMap.<String, String>of(), new Properties());
         } catch (RuntimeException ex) {
             assertEquals("Key not found: sys.no_such_key", ex.getMessage());
@@ -94,7 +94,7 @@ public class DockerJobPropertyTest {
 
     @Test
     public void getDirectoryBindings() {
-        DockerJobProperty property = new DockerJobProperty("image", "" +
+        DockerLauncherBuildWrapper property = new DockerLauncherBuildWrapper("image", "" +
                 "/etc/a\n" +
                 "\n" +
                 "/etc/b:\n" +
@@ -123,7 +123,7 @@ public class DockerJobPropertyTest {
 
     @Test
     public void getDirectoryBindings_with_vars() {
-        DockerJobProperty property = new DockerJobProperty("image", "" +
+        DockerLauncherBuildWrapper property = new DockerLauncherBuildWrapper("image", "" +
                 "${ENV_VAR}\n" +
                 "${env.ENV_VAR}\n" +
                 "${sys.first.prop.key}\n" +
@@ -153,7 +153,7 @@ public class DockerJobPropertyTest {
 
     @Test
     public void verify_default_environment_and_bindings() {
-        DockerJobProperty.Descriptor descriptor = new DockerJobProperty.Descriptor();
+        DockerLauncherBuildWrapper.Descriptor descriptor = new DockerLauncherBuildWrapper.Descriptor();
         String defaultBindings = descriptor.defaultDirectoryBindings();
         String defaultEnvironment = descriptor.defaultEnvironment();
 
