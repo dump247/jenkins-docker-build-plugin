@@ -44,6 +44,7 @@ import static java.lang.String.format;
 public class DockerLauncherBuildWrapper extends BuildWrapper {
     private static final Logger LOG = Logger.getLogger(DockerLauncherBuildWrapper.class.getName());
 
+    private static final Pattern INVALID_IMAGE_CHARS = Pattern.compile("\\s");
     private static final Pattern VAR_REF_TEST_PATTERN = Pattern.compile("\\$.*?(?:\\}|$)");
     private static final String UNSET_MARKER = "unset ";
     private static final ExecutorService _executorService = Executors.newCachedThreadPool();
@@ -281,6 +282,18 @@ public class DockerLauncherBuildWrapper extends BuildWrapper {
                     "unset SHLVL\n" +
                     "unset TERM\n" +
                     "unset USER";
+        }
+
+        public FormValidation doCheckImage(@QueryParameter String value) {
+            if (isNullOrEmpty(value)) {
+                return FormValidation.error("Field is required");
+            }
+
+            if (INVALID_IMAGE_CHARS.matcher(value).find()) {
+                return FormValidation.error("Field contains invalid characters");
+            }
+
+            return FormValidation.ok();
         }
 
         public FormValidation doCheckEnvironment(@QueryParameter String value) {
