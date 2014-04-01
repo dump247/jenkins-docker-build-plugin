@@ -7,6 +7,7 @@ public class AttachRequest {
     private boolean _stream = true;
     private boolean _stdoutIncluded = true;
     private boolean _stderrIncluded = true;
+    private boolean _stdinIncluded = false;
 
     public String getContainerId() {
         return _containerId;
@@ -76,6 +77,19 @@ public class AttachRequest {
 
     public AttachRequest withStderrIncluded(final boolean stderrIncluded) {
         setStderrIncluded(stderrIncluded);
+        return this;
+    }
+
+    public boolean isStdinIncluded() {
+        return _stdinIncluded;
+    }
+
+    public void setStdinIncluded(final boolean stdinIncluded) {
+        _stdinIncluded = stdinIncluded;
+    }
+
+    public AttachRequest withStdinIncluded(final boolean stdinIncluded) {
+        setStdinIncluded(stdinIncluded);
         return this;
     }
 }

@@ -2,6 +2,7 @@ package net.dump247.docker;
 
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonToken;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.jersey.api.client.Client;
 import com.sun.jersey.api.client.ClientHandlerException;
@@ -15,9 +16,14 @@ import javax.ws.rs.core.MultivaluedMap;
 import javax.ws.rs.core.UriBuilder;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.MalformedURLException;
+import java.net.Socket;
 import java.net.URI;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.Collections;
+import java.util.List;
 
 import static java.lang.String.format;
 
@@ -51,6 +57,10 @@ public class DockerClient {
     public DockerClient(URI dockerEndpoint) {
         _apiEndpoint = UriBuilder.fromUri(dockerEndpoint).path(API_VERSION).build();
         _httpClient = Client.create();
+    }
+
+    public URI getEndpoint() {
+        return _apiEndpoint;
     }
 
     /**
@@ -121,10 +131,6 @@ public class DockerClient {
             throw new NullPointerException("progress");
         }
 
-        // There are a couple of oddities about this API:
-        // 1. It appears to block until the image is downloaded, which may take a while
-        // 2. The response body contains multiple json objects concatenated
-        // 3. It always responds with 200, even if the response content indicates an error
         ProgressEvent response;
 
         try {
@@ -536,6 +542,93 @@ public class DockerClient {
         }
     }
 
+    public static class ContainerStreams {
+        public final InputStream stdout;
+        public final InputStream stderr;
+        public final OutputStream stdin;
+
+        public ContainerStreams(InputStream stdout, InputStream stderr, OutputStream stdin) {
+            this.stdout = stdout;
+            this.stderr = stderr;
+            this.stdin = stdin;
+        }
+    }
+
+    private static String path(URI uri) {
+        String path = uri.getRawPath();
+        String query = uri.getRawQuery();
+
+        return query == null
+                ? path
+                : path + "?" + query;
+    }
+
+    /**
+     * Attach to the input and output streams of a container.
+     *
+     * @param containerId id of the container to attach to
+     * @return container stdin and stdout/stderr
+     * @throws DockerException            if the server reports an error
+     * @throws ContainerNotFoundException if the container does not exist
+     * @throws ClientHandlerException     if an error occurs sending the request or receiving the response
+     *                                    (i.e. server is not listing on specified port, etc)
+     */
+    public ContainerStreams attachContainerStreams(String containerId) throws DockerException {
+        if (containerId == null) {
+            throw new NullPointerException("containerId");
+        }
+
+        try {
+            URI uri = UriBuilder.fromUri(_apiEndpoint).path(format("containers/%s/attach", containerId))
+                    .queryParam("stream", "1")
+                    .queryParam("logs", "1")
+                    .queryParam("stdin", "1")
+                    .queryParam("stdout", "1")
+                    .queryParam("stderr", "1")
+                    .build();
+            Socket socket = new Socket(_apiEndpoint.getHost(), _apiEndpoint.getPort());
+
+            OutputStream socketOut = socket.getOutputStream();
+            socketOut.write(("" +
+                    format("POST %s HTTP/1.0\r\n", path(uri)) +
+                    format("Accept: %s\r\n", APPLICATION_DOCKER_RAW_STREAM) +
+                    format("Content-Type: %s\r\n", APPLICATION_DOCKER_RAW_STREAM) +
+                    format("User-Agent: DockerClient\r\n") +
+                    "\r\n"
+            ).getBytes());
+
+            InputStream socketIn = socket.getInputStream();
+
+            // TODO better response processing
+            int ch;
+            int prevChar = 0;
+
+            while ((ch = socketIn.read()) >= 0) {
+                if (ch == '\r') {
+                    continue;
+                }
+
+                if (ch == '\n' && prevChar == ch) {
+                    break;
+                }
+
+                prevChar = ch;
+            }
+
+            MultiplexedStream multiplexedStream = new MultiplexedStream(socketIn);
+
+            return new ContainerStreams(
+                    new AttachedStream(STDOUT_STREAM, multiplexedStream),
+                    new AttachedStream(STDERR_STREAM, multiplexedStream),
+                    socketOut
+            );
+        } catch (MalformedURLException ex) {
+            throw new RuntimeException("Unexpected error", ex);
+        } catch (IOException ex) {
+            throw new DockerException("Error attaching to container: [containerId=" + containerId + "]", ex);
+        }
+    }
+
     /**
      * Attach to the container to receive stdout and stderr.
      *
@@ -687,6 +780,65 @@ public class DockerClient {
         }
     }
 
+    public void stopContainer(String containerId) throws DockerException {
+        if (containerId == null) {
+            throw new NullPointerException("containerId");
+        }
+
+        stopContainer(new StopContainerRequest().withContainerId(containerId));
+    }
+
+    public ListContainersResponse listContainers() throws DockerException {
+        return listContainers(new ListContainersRequest());
+    }
+
+    public ListContainersResponse listContainers(ListContainersRequest request) throws DockerException {
+        if (request == null) {
+            throw new NullPointerException("request");
+        }
+
+        try {
+            WebResource resource = resource("/containers/json");
+
+            if (request.getLimit() > 0) {
+                resource.queryParam("limit", Integer.toString(request.getLimit()));
+            }
+
+            // Docker v0.8.0 returns Content-Type = text/plain
+            // Jersey expected Content-Type = application/json and raises an exception
+            // This will be resolved with next release: https://github.com/dotcloud/docker/issues/3967
+
+            ClientResponse response = json(resource).get(ClientResponse.class);
+
+            if (response.getClientResponseStatus() != ClientResponse.Status.OK) {
+                throw new UniformInterfaceException(response);
+            }
+
+            List<ContainerInfo> containers = new ObjectMapper().readValue(response.getEntityInputStream(), new TypeReference<List<ContainerInfo>>() {});
+            return new ListContainersResponse(containers == null ? Collections.<ContainerInfo>emptyList() : containers);
+        } catch (IOException ex) {
+            throw new DockerException("Server error", ex);
+        } catch (UniformInterfaceException ex) {
+            throw new DockerException("Server error", ex);
+        }
+    }
+
+    /**
+     * Get system-wide information.
+     *
+     * @return system info
+     * @throws DockerException        if the server reports an error
+     * @throws ClientHandlerException if an error occurs sending the request or receiving the response
+     *                                (i.e. server is not listing on specified port, etc)
+     */
+    public SystemInfoResponse info() throws DockerException {
+        try {
+            return api("info").get(SystemInfoResponse.class);
+        } catch (UniformInterfaceException ex) {
+            throw new DockerException("Failed to get docker system information: [uri=" + uri("info") + "]", ex);
+        }
+    }
+
     private ProgressEvent readLastResponse(ClientResponse clientResponse, ProgressListener progress) throws IOException {
         JsonParser jsonParser = new ObjectMapper().getFactory().createParser(clientResponse.getEntityInputStream());
         JsonToken jsonToken;
@@ -724,6 +876,143 @@ public class DockerClient {
 
     private WebResource.Builder api(String path, Object... args) {
         return json(resource(path, args));
+    }
+
+    private static class MultiplexedStream {
+        private final InputStream _dataStream;
+        private final byte[] _headerBuf = new byte[8];
+
+        private boolean _endOfStream;
+        private int _streamClosed;
+        private int _streamNum;
+        private long _messageLen;
+
+        public MultiplexedStream(InputStream dataStream) {
+            _dataStream = dataStream;
+        }
+
+        public synchronized int read(final int streamNum, final byte[] bytes, final int off, final int len) throws IOException {
+            readHeader(streamNum);
+
+            if (_endOfStream) {
+                return -1;
+            }
+
+            int readLen = (int) Math.min(_messageLen, len);
+            int readCount = _dataStream.read(bytes, off, readLen);
+
+            if (readCount < 0) {
+                this.endOfStream();
+                return -1;
+            }
+
+            _messageLen -= readCount;
+            return readCount;
+        }
+
+        public synchronized int read(final int streamNum) throws IOException {
+            readHeader(streamNum);
+
+            if (_endOfStream) {
+                return -1;
+            }
+
+            int value = _dataStream.read();
+
+            if (value < 0) {
+                this.endOfStream();
+                return -1;
+            }
+
+            _messageLen -= 1;
+            return value;
+        }
+
+        public synchronized void close(final int streamNum) throws IOException {
+            _streamClosed |= streamNum;
+
+            if (_streamClosed == (STDERR_STREAM | STDOUT_STREAM)) {
+                _dataStream.close();
+            }
+        }
+
+        private void endOfStream() {
+            _endOfStream = true;
+            this.notify();
+        }
+
+        private void readHeader(int streamNum) throws IOException {
+            if ((_streamClosed & streamNum) != 0) {
+                throw new IOException("Stream closed");
+            }
+
+            while (!_endOfStream && _messageLen == 0) {
+                // read 8 bytes header
+                // header is [TYPE, 0, 0, 0, SIZE, SIZE, SIZE, SIZE]
+                // TYPE is 1:stdout, 2:stderr
+                // SIZE is 4-byte, unsigned, big endian length of message payload
+
+                int count = 0;
+
+                while (count < 8) {
+                    int result = _dataStream.read(_headerBuf, count, 8 - count);
+
+                    if (result < 0) {
+                        this.endOfStream();
+                        return;
+                    }
+
+                    count += result;
+                }
+
+                if (_headerBuf[1] != 0 || _headerBuf[2] != 0 || _headerBuf[3] != 0) {
+                    throw new IOException("Unexpected stream header content.");
+                }
+
+                _streamNum = _headerBuf[0];
+
+                // Clear the type because ByteBuffer needs 8 bytes to read the long
+                _headerBuf[0] = 0;
+                ByteBuffer buffer = ByteBuffer.wrap(_headerBuf);
+                buffer.order(ByteOrder.BIG_ENDIAN);
+                _messageLen = buffer.getLong();
+            }
+
+            while (!_endOfStream && _streamNum != streamNum) {
+                this.notify();
+
+                try {
+                    this.wait();
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        }
+    }
+
+    private static class AttachedStream extends InputStream {
+        private final int _streamNum;
+        private final MultiplexedStream _dataStream;
+
+        public AttachedStream(final int streamNum, final MultiplexedStream dataStream) {
+            _streamNum = streamNum;
+            _dataStream = dataStream;
+        }
+
+        @Override
+        public int read(final byte[] bytes, final int off, final int len) throws IOException {
+            return _dataStream.read(_streamNum, bytes, off, len);
+        }
+
+        @Override
+        public int read() throws IOException {
+            return _dataStream.read(_streamNum);
+        }
+
+        @Override
+        public void close() throws IOException {
+            _dataStream.close(_streamNum);
+        }
     }
 
     private static class AttachStream extends InputStream {
@@ -809,7 +1098,7 @@ public class DockerClient {
                     count += result;
                 }
 
-                if (_headerBuf[0] != _streamNum || _headerBuf[1] != 0 || _headerBuf[2] != 0 || _headerBuf[3] != 0) {
+                if ((_headerBuf[0] & _streamNum) == 0 || _headerBuf[1] != 0 || _headerBuf[2] != 0 || _headerBuf[3] != 0) {
                     throw new IOException("Unexpected stream header content.");
                 }
 

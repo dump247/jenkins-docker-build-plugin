@@ -6,10 +6,17 @@ import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.Callable;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
@@ -159,6 +166,49 @@ public class DockerClientIT {
                 },
                 runCommand(new CreateContainerRequest()
                         .withCommand("/bin/bash", "-c", "echo test out; echo test err >&2")));
+    }
+
+    private static String[] readLines(InputStream s) throws IOException {
+        BufferedReader reader = new BufferedReader(new InputStreamReader(s));
+        ArrayList<String> lines = new ArrayList<String>();
+        String line;
+
+        while ((line = reader.readLine()) != null) {
+            lines.add(line);
+        }
+
+        return lines.toArray(new String[0]);
+    }
+
+    @Test
+    public void attachContainerStreams() throws Exception {
+        String containerId = createContainer(new CreateContainerRequest()
+                .withCommand("/bin/bash", "-c", "read ddd; echo [${ddd}]; echo test err 1>&2")
+                .withImage(UBUNTU)
+                .withAttachStderr(true)
+                .withAttachStdout(true)
+                .withAttachStdin(true)
+                .withStdinOnce(true)
+                .withOpenStdin(true));
+
+        final DockerClient.ContainerStreams streams = _client.attachContainerStreams(containerId);
+
+        _client.startContainer(containerId);
+
+        streams.stdin.write("some input\n".getBytes());
+
+        Future<String[]> stdout = Executors.newSingleThreadExecutor().submit(new Callable<String[]>() {
+            @Override
+            public String[] call() throws Exception {
+                return readLines(streams.stdout);
+            }
+        });
+
+        String[] stderr = readLines(streams.stderr);
+
+        assertEquals(0, _client.waitContainer(containerId).getStatusCode());
+        assertArrayEquals(new String[] {"[some input]"}, stdout.get());
+        assertArrayEquals(new String[] {"test err"}, stderr);
     }
 
     @Test
