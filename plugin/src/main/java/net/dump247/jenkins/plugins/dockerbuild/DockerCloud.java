@@ -37,12 +37,15 @@ public class DockerCloud implements Describable<DockerCloud> {
 
     public final int maxExecutors;
 
+    public final String jenkinsSlavePath;
+
     @DataBoundConstructor
-    public DockerCloud(final String hostString, final int dockerPort, final String labelString, final int maxExecutors) {
+    public DockerCloud(final String hostString, final int dockerPort, final String labelString, final int maxExecutors, final String jenkinsSlavePath) {
         this.hostString = hostString;
         this.dockerPort = dockerPort;
         this.labelString = labelString;
         this.maxExecutors = maxExecutors;
+        this.jenkinsSlavePath = jenkinsSlavePath;
 
         readResolve();
     }
@@ -52,7 +55,8 @@ public class DockerCloud implements Describable<DockerCloud> {
         ImmutableList.Builder<DockerCloudHost> dockerHosts = ImmutableList.builder();
 
         for (String host : nullToEmpty(this.hostString).split("[,\\s]+")) {
-            dockerHosts.add(new DockerCloudHost(URI.create("http://" + host + ":" + this.dockerPort)));
+            URI dockerApiUri = URI.create("http://" + host + ":" + this.dockerPort);
+            dockerHosts.add(new DockerCloudHost(dockerApiUri, this.jenkinsSlavePath));
         }
 
         _hosts = dockerHosts.build();

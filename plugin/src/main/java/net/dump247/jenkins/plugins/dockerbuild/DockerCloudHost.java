@@ -22,9 +22,11 @@ public class DockerCloudHost {
     private static final Logger LOG = Logger.getLogger(DockerCloudHost.class.getName());
 
     private final DockerClient _dockerClient;
+    private final String _jenkinsSlavePath;
 
-    public DockerCloudHost(URI dockerEndpoint) {
+    public DockerCloudHost(URI dockerEndpoint, final String jenkinsSlavePath) {
         _dockerClient = new DockerClient(dockerEndpoint);
+        _jenkinsSlavePath = jenkinsSlavePath;
     }
 
     @Override
@@ -60,7 +62,7 @@ public class DockerCloudHost {
                     "/home/jenkins",
                     Sets.union(labels, newHashSet(
                             new LabelAtom("docker/" + imageName))),
-                    new DockerComputerLauncher(_dockerClient, imageName)
+                    new DockerComputerLauncher(_dockerClient, imageName, _jenkinsSlavePath)
             );
 
             Jenkins.getInstance().addNode(slave);

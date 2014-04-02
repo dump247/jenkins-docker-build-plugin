@@ -9,6 +9,7 @@ import hudson.util.StreamCopyThread;
 import net.dump247.docker.ContainerNotFoundException;
 import net.dump247.docker.CreateContainerRequest;
 import net.dump247.docker.CreateContainerResponse;
+import net.dump247.docker.DirectoryBinding;
 import net.dump247.docker.DockerClient;
 import net.dump247.docker.DockerException;
 import net.dump247.docker.ProgressEvent;
@@ -28,10 +29,12 @@ public class DockerComputerLauncher extends ComputerLauncher {
 
     private final DockerClient _dockerClient;
     private final String _imageName;
+    private final String _jenkinsSlavePath;
 
-    public DockerComputerLauncher(DockerClient dockerClient, String imageName) {
+    public DockerComputerLauncher(DockerClient dockerClient, String imageName, final String jenkinsSlavePath) {
         _dockerClient = dockerClient;
         _imageName = imageName;
+        _jenkinsSlavePath = jenkinsSlavePath;
     }
 
     public DockerClient getDockerClient() {
@@ -50,8 +53,7 @@ public class DockerComputerLauncher extends ComputerLauncher {
         LOG.info(format("Starting container: [containerId=%s]", containerId));
         _dockerClient.startContainer(new StartContainerRequest()
                 .withContainerId(containerId)
-                .withBinding("/usr/lib/jenkins/slave", "/usr/lib/jenkins/slave")
-                .withBinding("/usr/lib/jvm/java-7-openjdk-amd64/jre", "/usr/lib/jenkins/jre"));
+                .withBinding(_jenkinsSlavePath, _jenkinsSlavePath, DirectoryBinding.Access.READ));
 
         final StreamCopyThread stderrThread = new StreamCopyThread(containerId + " stderr", streams.stderr, listener.getLogger());
         stderrThread.start();
@@ -107,8 +109,8 @@ public class DockerComputerLauncher extends ComputerLauncher {
                 .withStdinOnce(true)
                 .withOpenStdin(true)
                 .withTty(false)
-                .withVolumes("/usr/lib/jenkins/slave", "/usr/lib/jenkins/jre")
-                .withCommand("/usr/lib/jenkins/jre/bin/java", "-jar", "/usr/lib/jenkins/slave/slave.jar"));
+                .withVolumes(_jenkinsSlavePath)
+                .withCommand(_jenkinsSlavePath + "/jre/bin/java", "-jar", _jenkinsSlavePath + "/slave.jar"));
 
         for (String warning : response.getWarnings()) {
             LOG.warning(warning);
