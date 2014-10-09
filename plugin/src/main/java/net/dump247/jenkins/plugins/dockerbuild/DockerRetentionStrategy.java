@@ -26,12 +26,15 @@ public class DockerRetentionStrategy extends RetentionStrategy<DockerComputer> {
 
     @Override
     public long check(final DockerComputer computer) {
-        LOG.info(format("check: isIdle=%s isOnline=%s hasRunJob=%s hasAcceptedJob=%s launchTimeMs=%d",
+        LOG.info(format("check: isIdle=%s isOnline=%s hasRunJob=%s hasAcceptedJob=%s launchTimeMs=%d isAcceptingTasks=%s isOffline=%s isConnecting=%s",
                 computer.isIdle(),
                 computer.isOnline(),
                 computer.hasCompletedJob(),
                 computer.hasAcceptedJob(),
-                computer.getNodeLaunchTimeMs()));
+                computer.getNodeLaunchTimeMs(),
+                computer.isAcceptingTasks(),
+                computer.isOffline(),
+                computer.isConnecting()));
 
         if (computer.isOnline()) {
             if (computer.hasCompletedJob() || (!computer.hasAcceptedJob() && hasTimedOut(computer, JOB_ACCEPT_TIMEOUT_MS))) {

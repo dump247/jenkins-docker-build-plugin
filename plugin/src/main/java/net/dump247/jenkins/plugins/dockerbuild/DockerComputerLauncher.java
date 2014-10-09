@@ -26,15 +26,35 @@ import static java.lang.String.format;
 
 public class DockerComputerLauncher extends ComputerLauncher {
     private static final Logger LOG = Logger.getLogger(DockerComputerLauncher.class.getName());
+    private static final String JENKINS_HOST_SHARED = "/var/lib/jenkins";
+    private static final String JENKINS_CONTAINER_SHARED = "/var/lib/jenkins/host";
+    public static final String JENKINS_CONTAINER_HOME = "/var/lib/jenkins/home";
+
+    /** Bash script that launches the slave jar **/
+    private static final String SLAVE_SCRIPT = "" +
+            "mkdir -p " + JENKINS_CONTAINER_HOME + "\n" +
+            "cp -f " + JENKINS_CONTAINER_SHARED + "/slave.jar " + JENKINS_CONTAINER_HOME + "/slave.jar\n" +
+            "\n" +
+            "JAVA_HOME=${JDK_HOME:-$JAVA_HOME}\n" +
+            "if [[ -z \"${JAVA_HOME}\" ]]; then\n" +
+            "    JAVA_BIN=`which java`\n" +
+            "else\n" +
+            "    JAVA_BIN=${JAVA_HOME}/bin/java\n" +
+            "fi\n" +
+            "\n" +
+            "if [[ -z \"${JAVA_BIN}\" ]]; then\n" +
+            "    echo Unable to find java executable: JDK_HOME, JAVA_HOME, PATH 1>&2\n" +
+            "    exit 2000\n" +
+            "fi\n" +
+            "\n" +
+            "\"${JAVA_BIN}\" -jar " + JENKINS_CONTAINER_HOME + "/slave.jar";
 
     private final DockerClient _dockerClient;
     private final String _imageName;
-    private final String _jenkinsSlavePath;
 
-    public DockerComputerLauncher(DockerClient dockerClient, String imageName, final String jenkinsSlavePath) {
+    public DockerComputerLauncher(DockerClient dockerClient, String imageName) {
         _dockerClient = dockerClient;
         _imageName = imageName;
-        _jenkinsSlavePath = jenkinsSlavePath;
     }
 
     public DockerClient getDockerClient() {
@@ -43,6 +63,7 @@ public class DockerComputerLauncher extends ComputerLauncher {
 
     @Override
     public void launch(final SlaveComputer computer, final TaskListener listener) throws IOException, InterruptedException {
+        LOG.info("Launching!!!!");
         pullImage(listener);
         listener.getLogger().println(format("### Running job with Docker image %s", _imageName));
         final String containerId = createContainer(listener);
@@ -53,7 +74,7 @@ public class DockerComputerLauncher extends ComputerLauncher {
         LOG.info(format("Starting container: [containerId=%s]", containerId));
         _dockerClient.startContainer(new StartContainerRequest()
                 .withContainerId(containerId)
-                .withBinding(_jenkinsSlavePath, _jenkinsSlavePath, DirectoryBinding.Access.READ));
+                .withBinding(JENKINS_HOST_SHARED, JENKINS_CONTAINER_SHARED, DirectoryBinding.Access.READ));
 
         final StreamCopyThread stderrThread = new StreamCopyThread(containerId + " stderr", streams.stderr, listener.getLogger());
         stderrThread.start();
@@ -86,7 +107,13 @@ public class DockerComputerLauncher extends ComputerLauncher {
                 try {
                     LOG.info(format("Stopping container: [containerId=%s]", containerId));
                     _dockerClient.stopContainer(containerId);
+                } catch (ContainerNotFoundException ex) {
+                    LOG.log(Level.FINE, format("Container not found: [containerId=%s]", containerId), ex);
+                } catch (DockerException ex) {
+                    ex.printStackTrace(listener.error("Error removing removing container: [containerId=%s]", containerId));
+                }
 
+                try {
                     LOG.info(format("Removing container: [containerId=%s]", containerId));
                     _dockerClient.removeContainer(containerId);
                 } catch (ContainerNotFoundException ex) {
@@ -109,12 +136,12 @@ public class DockerComputerLauncher extends ComputerLauncher {
                 .withStdinOnce(true)
                 .withOpenStdin(true)
                 .withTty(false)
-                .withVolumes(_jenkinsSlavePath)
-                .withCommand(_jenkinsSlavePath + "/jre/bin/java", "-jar", _jenkinsSlavePath + "/slave.jar"));
+                .withVolumes(JENKINS_CONTAINER_SHARED)
+                .withCommand("/bin/bash", "-c", SLAVE_SCRIPT));
 
         for (String warning : response.getWarnings()) {
             LOG.warning(warning);
-            listener.getLogger().println(format("WARN: %s", warning));
+            listener.getLogger().println(format("DOCKER WARN: %s", warning));
         }
 
         return response.getContainerId();
@@ -124,7 +151,7 @@ public class DockerComputerLauncher extends ComputerLauncher {
         final PrintStream logger = listener.getLogger();
         final MutableInt counter = new MutableInt();
 
-        LOG.info(format("Pulling image: [image=%s] [endpoint=%s]", _imageName, _dockerClient));
+        LOG.info(format("Pulling image: [image=%s] [endpoint=%s]", _imageName, _dockerClient.getEndpoint()));
 
         _dockerClient.pullImage(_imageName, new ProgressListener() {
             public void progress(final ProgressEvent event) {

@@ -7,6 +7,7 @@ import hudson.slaves.SlaveComputer;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.util.concurrent.Future;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -69,6 +70,14 @@ public class DockerComputer extends SlaveComputer {
     public void setChannel(final Channel channel, final OutputStream launchLog, final Channel.Listener listener) throws IOException, InterruptedException {
         super.setChannel(channel, launchLog, listener);
         _nodeLaunchTimeMs = System.currentTimeMillis();
+    }
+
+    @Override
+    protected Future<?> _connect(boolean forceReconnect) {
+        LOG.info("Connecting computer: " + forceReconnect);
+        Future<?> result = super._connect(forceReconnect);
+        LOG.info("Connect future: " + result);
+        return result;
     }
 
     public DockerSlave getSlave() {

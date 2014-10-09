@@ -39,10 +39,6 @@
                         <f:entry title="Docker API Port" field="dockerPort">
                             <f:number default="4243" />
                         </f:entry>
-
-                        <f:entry title="Jenkins Slave Path" field="jenkinsSlavePath">
-                            <f:textbox default="/usr/lib/jenkins" />
-                        </f:entry>
                     </f:advanced>
 
                      <f:entry title="">

@@ -1,6 +1,6 @@
 package net.dump247.jenkins.plugins.dockerbuild;
 
-import com.google.common.collect.Sets;
+import hudson.model.Computer;
 import hudson.model.Descriptor;
 import hudson.model.Node;
 import hudson.model.labels.LabelAtom;
@@ -14,19 +14,19 @@ import java.util.List;
 import java.util.Set;
 import java.util.logging.Logger;
 
-import static com.google.inject.internal.guava.collect.$Sets.newHashSet;
+import static com.google.common.base.Preconditions.checkNotNull;
 import static java.lang.String.format;
 
-/** Machine that starts jenkins slaves inside of docker containers. */
+/**
+ * Machine that starts jenkins slaves inside of docker containers.
+ */
 public class DockerCloudHost {
     private static final Logger LOG = Logger.getLogger(DockerCloudHost.class.getName());
 
     private final DockerClient _dockerClient;
-    private final String _jenkinsSlavePath;
 
-    public DockerCloudHost(URI dockerEndpoint, final String jenkinsSlavePath) {
+    public DockerCloudHost(URI dockerEndpoint) {
         _dockerClient = new DockerClient(dockerEndpoint);
-        _jenkinsSlavePath = jenkinsSlavePath;
     }
 
     @Override
@@ -34,7 +34,7 @@ public class DockerCloudHost {
         return _dockerClient.getEndpoint().toString();
     }
 
-    public int countRunningNodes() {
+    public int countRunningJobs() {
         List<Node> nodes = Jenkins.getInstance().getNodes();
         int count = 0;
 
@@ -54,21 +54,25 @@ public class DockerCloudHost {
         return count;
     }
 
-    public Node provision(final String imageName, final Set<LabelAtom> labels) throws IOException {
+    public DockerSlave provisionSlave(String imageName, Set<LabelAtom> labels) throws IOException {
+        checkNotNull(imageName);
+        checkNotNull(labels);
+
         try {
             DockerSlave slave = new DockerSlave(
                     format("%s (%s)", imageName, RandomStringUtils.randomAlphanumeric(6).toLowerCase()),
                     "Running job on image " + imageName,
-                    "/home/jenkins",
-                    Sets.union(labels, newHashSet(
-                            new LabelAtom("docker/" + imageName))),
-                    new DockerComputerLauncher(_dockerClient, imageName, _jenkinsSlavePath)
+                    DockerComputerLauncher.JENKINS_CONTAINER_HOME,
+                    labels,
+                    new DockerComputerLauncher(_dockerClient, imageName)
             );
 
             Jenkins.getInstance().addNode(slave);
 
             LOG.info("Starting slave computer...");
-            slave.toComputer().connect(false);
+            Computer slaveComputer = slave.toComputer();
+            slaveComputer.connect(false);
+            LOG.info("Slave computer started: " + slaveComputer.getClass());
 
             return slave;
         } catch (Descriptor.FormException ex) {
