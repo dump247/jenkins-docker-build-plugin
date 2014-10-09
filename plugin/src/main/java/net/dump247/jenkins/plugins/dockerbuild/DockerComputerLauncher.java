@@ -1,5 +1,6 @@
 package net.dump247.jenkins.plugins.dockerbuild;
 
+import com.google.common.collect.ImmutableList;
 import hudson.Extension;
 import hudson.model.TaskListener;
 import hudson.remoting.Channel;
@@ -7,6 +8,7 @@ import hudson.slaves.ComputerLauncher;
 import hudson.slaves.SlaveComputer;
 import hudson.util.StreamCopyThread;
 import net.dump247.docker.ContainerNotFoundException;
+import net.dump247.docker.ContainerVolume;
 import net.dump247.docker.CreateContainerRequest;
 import net.dump247.docker.CreateContainerResponse;
 import net.dump247.docker.DirectoryBinding;
@@ -19,9 +21,11 @@ import org.apache.commons.lang.mutable.MutableInt;
 
 import java.io.IOException;
 import java.io.PrintStream;
+import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import static com.google.common.collect.Lists.newArrayListWithCapacity;
 import static java.lang.String.format;
 
 public class DockerComputerLauncher extends ComputerLauncher {
@@ -30,7 +34,9 @@ public class DockerComputerLauncher extends ComputerLauncher {
     private static final String JENKINS_CONTAINER_SHARED = "/var/lib/jenkins/host";
     public static final String JENKINS_CONTAINER_HOME = "/var/lib/jenkins/home";
 
-    /** Bash script that launches the slave jar **/
+    /**
+     * Bash script that launches the slave jar *
+     */
     private static final String SLAVE_SCRIPT = "" +
             "mkdir -p " + JENKINS_CONTAINER_HOME + "\n" +
             "cp -f " + JENKINS_CONTAINER_SHARED + "/slave.jar " + JENKINS_CONTAINER_HOME + "/slave.jar\n" +
@@ -51,10 +57,12 @@ public class DockerComputerLauncher extends ComputerLauncher {
 
     private final DockerClient _dockerClient;
     private final String _imageName;
+    private final List<DirectoryBinding> _directoryBindings;
 
-    public DockerComputerLauncher(DockerClient dockerClient, String imageName) {
+    public DockerComputerLauncher(DockerClient dockerClient, String imageName, List<DirectoryBinding> directoryBindings) {
         _dockerClient = dockerClient;
         _imageName = imageName;
+        _directoryBindings = directoryBindings;
     }
 
     public DockerClient getDockerClient() {
@@ -74,7 +82,10 @@ public class DockerComputerLauncher extends ComputerLauncher {
         LOG.info(format("Starting container: [containerId=%s]", containerId));
         _dockerClient.startContainer(new StartContainerRequest()
                 .withContainerId(containerId)
-                .withBinding(JENKINS_HOST_SHARED, JENKINS_CONTAINER_SHARED, DirectoryBinding.Access.READ));
+                .withBindings(ImmutableList.<DirectoryBinding>builder()
+                        .add(new DirectoryBinding(JENKINS_HOST_SHARED, JENKINS_CONTAINER_SHARED, DirectoryBinding.Access.READ))
+                        .addAll(_directoryBindings)
+                        .build()));
 
         final StreamCopyThread stderrThread = new StreamCopyThread(containerId + " stderr", streams.stderr, listener.getLogger());
         stderrThread.start();
@@ -128,6 +139,13 @@ public class DockerComputerLauncher extends ComputerLauncher {
     private String createContainer(final TaskListener listener) throws IOException {
         LOG.info(format("Creating container: [image=%s] [endpoint=%s]", _imageName, _dockerClient));
 
+        List<ContainerVolume> volumes = newArrayListWithCapacity(_directoryBindings.size() + 1);
+        volumes.add(new ContainerVolume(JENKINS_CONTAINER_SHARED));
+
+        for (DirectoryBinding binding : _directoryBindings) {
+            volumes.add(new ContainerVolume(binding.getContainerPath()));
+        }
+
         CreateContainerResponse response = _dockerClient.createContainer(new CreateContainerRequest()
                 .withImage(_imageName)
                 .withAttachStderr(true)
@@ -136,7 +154,7 @@ public class DockerComputerLauncher extends ComputerLauncher {
                 .withStdinOnce(true)
                 .withOpenStdin(true)
                 .withTty(false)
-                .withVolumes(JENKINS_CONTAINER_SHARED)
+                .withVolumes(volumes)
                 .withCommand("/bin/bash", "-c", SLAVE_SCRIPT));
 
         for (String warning : response.getWarnings()) {

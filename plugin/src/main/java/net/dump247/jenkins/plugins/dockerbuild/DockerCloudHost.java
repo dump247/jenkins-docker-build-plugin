@@ -5,6 +5,7 @@ import hudson.model.Descriptor;
 import hudson.model.Node;
 import hudson.model.labels.LabelAtom;
 import jenkins.model.Jenkins;
+import net.dump247.docker.DirectoryBinding;
 import net.dump247.docker.DockerClient;
 import org.apache.commons.lang.RandomStringUtils;
 
@@ -58,9 +59,10 @@ public class DockerCloudHost {
         return count;
     }
 
-    public DockerSlave provisionSlave(String imageName, Set<LabelAtom> labels) throws IOException {
+    public DockerSlave provisionSlave(String imageName, Set<LabelAtom> labels, List<DirectoryBinding> directoryBindings) throws IOException {
         checkNotNull(imageName);
         checkNotNull(labels);
+        checkNotNull(directoryBindings);
 
         try {
             DockerSlave slave = new DockerSlave(
@@ -68,7 +70,7 @@ public class DockerCloudHost {
                     "Running job on image " + imageName,
                     DockerComputerLauncher.JENKINS_CONTAINER_HOME,
                     labels,
-                    new DockerComputerLauncher(_dockerClient, imageName)
+                    new DockerComputerLauncher(_dockerClient, imageName, directoryBindings)
             );
 
             Jenkins.getInstance().addNode(slave);

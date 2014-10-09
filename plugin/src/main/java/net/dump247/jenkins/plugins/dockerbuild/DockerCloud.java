@@ -9,10 +9,8 @@ import com.cloudbees.plugins.credentials.common.StandardUsernamePasswordCredenti
 import com.cloudbees.plugins.credentials.domains.SchemeRequirement;
 import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Sets;
-import com.sun.jersey.api.client.Client;
-import com.sun.jersey.api.client.filter.HTTPBasicAuthFilter;
-import com.sun.jersey.client.urlconnection.HTTPSProperties;
 import hudson.Extension;
 import hudson.model.Describable;
 import hudson.model.Item;
@@ -22,6 +20,7 @@ import hudson.security.ACL;
 import hudson.util.FormValidation;
 import hudson.util.ListBoxModel;
 import jenkins.model.Jenkins;
+import net.dump247.docker.DirectoryBinding;
 import net.dump247.docker.DockerClient;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.QueryParameter;
@@ -37,10 +36,10 @@ import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.security.UnrecoverableKeyException;
-import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -48,6 +47,7 @@ import java.util.logging.Logger;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Strings.isNullOrEmpty;
 import static com.google.common.base.Strings.nullToEmpty;
+import static com.google.common.collect.Lists.newArrayList;
 import static com.google.common.collect.Lists.newArrayListWithCapacity;
 import static java.lang.String.format;
 import static java.util.Collections.unmodifiableSet;
@@ -58,6 +58,10 @@ import static java.util.Collections.unmodifiableSet;
 public class DockerCloud implements Describable<DockerCloud> {
     private static final Logger LOG = Logger.getLogger(DockerCloud.class.getName());
     private static final SchemeRequirement HTTPS_SCHEME = new SchemeRequirement("https");
+    private static final Map<String, DirectoryBinding.Access> BINDING_ACCESS = ImmutableMap.of(
+            "r", DirectoryBinding.Access.READ,
+            "rw", DirectoryBinding.Access.READ_WRITE
+    );
 
     public final String hostString;
     private transient List<DockerCloudHost> _hosts;
@@ -72,14 +76,18 @@ public class DockerCloud implements Describable<DockerCloud> {
     public final boolean tlsEnabled;
     public final String credentialsId;
 
+    public final String directoryMappingsString;
+    private transient List<DirectoryBinding> _directoryMappings;
+
     @DataBoundConstructor
-    public DockerCloud(final String hostString, final int dockerPort, final String labelString, final int maxExecutors, final boolean tlsEnabled, final String credentialsId) {
+    public DockerCloud(final String hostString, final int dockerPort, final String labelString, final int maxExecutors, final boolean tlsEnabled, final String credentialsId, final String directoryMappingsString) {
         this.hostString = hostString;
         this.dockerPort = dockerPort;
         this.labelString = labelString;
         this.maxExecutors = maxExecutors;
         this.tlsEnabled = tlsEnabled;
         this.credentialsId = credentialsId;
+        this.directoryMappingsString = directoryMappingsString;
 
         readResolve();
     }
@@ -100,12 +108,74 @@ public class DockerCloud implements Describable<DockerCloud> {
 
         _labels = unmodifiableSet(Label.parse(this.labelString));
 
+        _directoryMappings = parseBindings(directoryMappingsString);
+
         return this;
     }
 
     @SuppressWarnings("unchecked")
     public hudson.model.Descriptor<DockerCloud> getDescriptor() {
         return Jenkins.getInstance().getDescriptor(getClass());
+    }
+
+    private static List<DirectoryBinding> parseBindings(String bindingsString) {
+        ImmutableList.Builder<DirectoryBinding> directoryBindings = ImmutableList.builder();
+        int lineNum = 0;
+
+        if (!isNullOrEmpty(bindingsString)) {
+            for (String line : bindingsString.split("[\r\n]+")) {
+                lineNum += 1;
+                line = cleanLine(line);
+
+                if (line.length() > 0) {
+                    String[] parts = line.split(":");
+
+                    if (parts.length == 0 || parts.length > 3) {
+                        throw new IllegalArgumentException(format("Invalid directory mapping (line %d): %s", lineNum, line));
+                    }
+
+                    String hostDir = parts[0].trim();
+                    String containerDir = parts.length > 1 ? parts[1].trim() : null;
+                    String accessStr = parts.length > 2 ? parts[2].trim().toLowerCase() : null;
+                    DirectoryBinding.Access bindingAccess;
+
+                    if (accessStr != null) {
+                        bindingAccess = BINDING_ACCESS.get(accessStr);
+
+                        if (bindingAccess == null) {
+                            throw new IllegalArgumentException(format("Invalid directory mapping, unsupported access statement, use r or rw (line %d): %s", lineNum, line));
+                        }
+                    } else if (containerDir != null) {
+                        bindingAccess = BINDING_ACCESS.get(containerDir.toLowerCase());
+
+                        if (bindingAccess == null) {
+                            bindingAccess = DirectoryBinding.Access.READ;
+                        } else {
+                            containerDir = hostDir;
+                        }
+                    } else {
+                        containerDir = hostDir;
+                        bindingAccess = DirectoryBinding.Access.READ;
+                    }
+
+                    if (!hostDir.startsWith("/") || !containerDir.startsWith("/")) {
+                        throw new IllegalArgumentException(format("Invalid directory mapping, use absolute paths (line %d): %s", lineNum, line));
+                    }
+
+                    directoryBindings.add(new DirectoryBinding(hostDir, containerDir, bindingAccess));
+                }
+            }
+        }
+
+        return directoryBindings.build();
+    }
+
+    private static String cleanLine(String line) {
+        int commentIndex = line.indexOf('#');
+
+        return commentIndex >= 0
+                ? line.substring(0, commentIndex).trim()
+                : line.trim();
     }
 
     private DockerClient buildDockerClient(String host) {
@@ -178,7 +248,7 @@ public class DockerCloud implements Describable<DockerCloud> {
         for (HostCount host : listAvailableHosts()) {
             try {
                 LOG.info(format("Provisioning node: [host=%s] [load=%d]", host.host, host.count));
-                return ProvisionResult.provisioned(host.host.provisionSlave(imageName, cloudImageLabels));
+                return ProvisionResult.provisioned(host.host.provisionSlave(imageName, cloudImageLabels, _directoryMappings));
             } catch (IOException ex) {
                 LOG.log(Level.WARNING, format("Error provisioning node: [host=%s] [load=%d]", host.host, host.count), ex);
             }
@@ -233,9 +303,18 @@ public class DockerCloud implements Describable<DockerCloud> {
         }
 
         public FormValidation doCheckCredentialsId(@QueryParameter String value, @QueryParameter boolean tlsEnabled) {
-            return tlsEnabled && isNullOrEmpty(value)
+            return !tlsEnabled && !isNullOrEmpty(value)
                     ? FormValidation.error("TLS is required when authentication is enabled")
                     : FormValidation.ok();
+        }
+
+        public FormValidation doCheckDirectoryMappingsString(@QueryParameter String value) {
+            try {
+                parseBindings(value);
+                return FormValidation.ok();
+            } catch (Exception ex) {
+                return FormValidation.error(ex.getMessage());
+            }
         }
     }
 
