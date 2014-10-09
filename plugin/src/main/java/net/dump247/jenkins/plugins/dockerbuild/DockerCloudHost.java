@@ -29,6 +29,10 @@ public class DockerCloudHost {
         _dockerClient = new DockerClient(dockerEndpoint);
     }
 
+    public DockerCloudHost(DockerClient client) {
+        _dockerClient = checkNotNull(client);
+    }
+
     @Override
     public String toString() {
         return _dockerClient.getEndpoint().toString();

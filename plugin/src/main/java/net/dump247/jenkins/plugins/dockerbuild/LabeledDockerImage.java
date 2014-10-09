@@ -25,8 +25,6 @@ public class LabeledDockerImage implements Describable<LabeledDockerImage> {
     public LabeledDockerImage(String imageName, String labelString) {
         this.imageName = imageName;
         this.labelString = labelString;
-
-        readResolve();
     }
 
     @SuppressWarnings("unchecked")
@@ -34,15 +32,13 @@ public class LabeledDockerImage implements Describable<LabeledDockerImage> {
         return Jenkins.getInstance().getDescriptor(getClass());
     }
 
-    /**
-     * Initialize transient fields after deserialization.
-     */
-    protected Object readResolve() {
-        _labels = Label.parse(this.labelString);
-        return this;
-    }
-
     public Set<LabelAtom> getLabels() {
+        if (_labels == null) {
+            // Do not do this in readResolve as it can result in a recursive dependency load that
+            // makes jenkins startup slow and unstable.
+            _labels = Label.parse(this.labelString);
+        }
+
         return _labels;
     }
 

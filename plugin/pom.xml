@@ -42,5 +42,11 @@
             <artifactId>docker-api</artifactId>
             <version>${project.version}</version>
         </dependency>
+
+        <dependency>
+            <groupId>org.jenkins-ci.plugins</groupId>
+            <artifactId>credentials</artifactId>
+            <version>1.9.4</version>
+        </dependency>
     </dependencies>
 </project>

@@ -9,8 +9,13 @@ import com.sun.jersey.api.client.ClientHandlerException;
 import com.sun.jersey.api.client.ClientResponse;
 import com.sun.jersey.api.client.UniformInterfaceException;
 import com.sun.jersey.api.client.WebResource;
+import com.sun.jersey.api.client.filter.HTTPBasicAuthFilter;
+import com.sun.jersey.client.urlconnection.HTTPSProperties;
 import com.sun.jersey.core.util.MultivaluedMapImpl;
 
+import javax.net.ssl.HostnameVerifier;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSession;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.MultivaluedMap;
 import javax.ws.rs.core.UriBuilder;
@@ -34,10 +39,14 @@ import static java.lang.String.format;
  * port. For example: docker -H 127.0.0.1:4243
  */
 public class DockerClient {
-    /** Version of the docker API this client uses ({@value}). */
+    /**
+     * Version of the docker API this client uses ({@value}).
+     */
     public static final String API_VERSION = "v1.8";
 
-    /** URI of the default local docker API endpoint (http://localhost:4243). */
+    /**
+     * URI of the default local docker API endpoint (http://localhost:4243).
+     */
     public static final URI DEFAULT_LOCAL_URI = URI.create("http://localhost:4243");
 
     public static final String APPLICATION_DOCKER_RAW_STREAM = "application/vnd.docker.raw-stream";
@@ -48,15 +57,37 @@ public class DockerClient {
 
     private final URI _apiEndpoint;
     private final Client _httpClient;
+    private final SSLContext _sslContext;
 
-    /**
-     * Initialize a new instance.
-     *
-     * @param dockerEndpoint docker API to interact with (e.g. http://127.0.0.1:4243)
-     */
     public DockerClient(URI dockerEndpoint) {
+        this(dockerEndpoint, null, null, null, null);
+    }
+
+    public DockerClient(URI dockerEndpoint, SSLContext sslContext, HostnameVerifier hostnameVerifier, String username, String password) {
         _apiEndpoint = UriBuilder.fromUri(dockerEndpoint).path(API_VERSION).build();
         _httpClient = Client.create();
+        _sslContext = sslContext;
+
+        if (!"http".equals(dockerEndpoint.getScheme()) && !"https".equals(dockerEndpoint.getScheme())) {
+            throw new IllegalArgumentException(format("Unsupported endpoint scheme. Only http and https are supported: [dockerEndpoint=%s]", dockerEndpoint));
+        }
+
+        if (sslContext == null && !"http".equals(dockerEndpoint.getScheme())) {
+            // Attach currently directly uses sockets, so we need to ensure the jersey client and
+            // the raw sockets implementation uses the same settings. This check may be overly
+            // conservative and unnecessary.
+            throw new IllegalArgumentException(format("SSL context is required for HTTPS connections: [dockerEndpoint=%s]", dockerEndpoint));
+        } else if (sslContext != null) {
+            _httpClient.getProperties().put(HTTPSProperties.PROPERTY_HTTPS_PROPERTIES, new HTTPSProperties(hostnameVerifier, sslContext));
+        }
+
+
+        username = username == null ? "" : username;
+        password = password == null ? "" : password;
+
+        if (username.length() > 0 || password.length() > 0) {
+            _httpClient.addFilter(new HTTPBasicAuthFilter(username, password));
+        }
     }
 
     public URI getEndpoint() {
@@ -86,7 +117,7 @@ public class DockerClient {
      * @see #DEFAULT_LOCAL_URI
      */
     public static DockerClient localClient() {
-        return new DockerClient(DEFAULT_LOCAL_URI);
+        return new DockerClient(DEFAULT_LOCAL_URI, null, null, null, null);
     }
 
     /**
@@ -586,7 +617,10 @@ public class DockerClient {
                     .queryParam("stdout", "1")
                     .queryParam("stderr", "1")
                     .build();
-            Socket socket = new Socket(_apiEndpoint.getHost(), _apiEndpoint.getPort());
+
+            Socket socket = "https".equals(_apiEndpoint.getScheme())
+                    ? _sslContext.getSocketFactory().createSocket(_apiEndpoint.getHost(), _apiEndpoint.getPort())
+                    : new Socket(_apiEndpoint.getHost(), _apiEndpoint.getPort());
 
             OutputStream socketOut = socket.getOutputStream();
             socketOut.write(("" +
@@ -814,7 +848,8 @@ public class DockerClient {
                 throw new UniformInterfaceException(response);
             }
 
-            List<ContainerInfo> containers = new ObjectMapper().readValue(response.getEntityInputStream(), new TypeReference<List<ContainerInfo>>() {});
+            List<ContainerInfo> containers = new ObjectMapper().readValue(response.getEntityInputStream(), new TypeReference<List<ContainerInfo>>() {
+            });
             return new ListContainersResponse(containers == null ? Collections.<ContainerInfo>emptyList() : containers);
         } catch (IOException ex) {
             throw new DockerException("Server error", ex);
@@ -1110,4 +1145,11 @@ public class DockerClient {
             }
         }
     }
+
+    private static final HostnameVerifier ALLOW_ALL_HOSTNAMES = new HostnameVerifier() {
+        @Override
+        public boolean verify(String s, SSLSession sslSession) {
+            return true;
+        }
+    };
 }
