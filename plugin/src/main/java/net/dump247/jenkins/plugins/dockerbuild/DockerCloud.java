@@ -47,7 +47,6 @@ import java.util.logging.Logger;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Strings.isNullOrEmpty;
 import static com.google.common.base.Strings.nullToEmpty;
-import static com.google.common.collect.Lists.newArrayList;
 import static com.google.common.collect.Lists.newArrayListWithCapacity;
 import static java.lang.String.format;
 import static java.util.Collections.unmodifiableSet;
@@ -315,6 +314,12 @@ public class DockerCloud implements Describable<DockerCloud> {
             } catch (Exception ex) {
                 return FormValidation.error(ex.getMessage());
             }
+        }
+
+        public FormValidation doCheckDockerPort(@QueryParameter int value) {
+            return value < 1 || value > 65535
+                    ? FormValidation.error("Invalid port value. Must be between 1 and 65535.")
+                    : FormValidation.ok();
         }
     }
 
