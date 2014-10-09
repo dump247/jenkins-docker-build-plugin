@@ -29,6 +29,10 @@
                         <f:textbox/>
                     </f:entry>
 
+                    <f:entry title="Docker API Port" field="dockerPort" description="Standard Docker port numbers: http=4243 https=2376">
+                        <f:number default="4243"/>
+                    </f:entry>
+
                     <f:entry title="Labels" field="labelString">
                         <f:textbox/>
                     </f:entry>
@@ -48,12 +52,6 @@
                     <f:entry title="Directory Mappings" field="directoryMappingsString" description="hostPath[:containerPath[:access]] or path[:access]. Access is r or rw, default is r.">
                         <f:textarea/>
                     </f:entry>
-
-                    <f:advanced>
-                        <f:entry title="Docker API Port" field="dockerPort">
-                            <f:number default="4243"/>
-                        </f:entry>
-                    </f:advanced>
 
                     <f:entry title="">
                         <div align="right">
