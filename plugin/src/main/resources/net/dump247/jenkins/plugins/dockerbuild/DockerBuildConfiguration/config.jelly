@@ -25,7 +25,7 @@
         <f:entry title="Clouds">
             <f:repeatable field="clouds">
                 <table width="100%">
-                    <f:entry title="Hosts" field="hostString">
+                    <f:entry title="Hosts" field="hostString" description="Comma or space separated list of IP or DNS names for docker slave hosts">
                         <f:textbox/>
                     </f:entry>
 
@@ -45,7 +45,7 @@
                         <f:checkbox/>
                     </f:entry>
 
-                    <f:entry title="Credentials" field="credentialsId" description="Only used if TLS is enabled">
+                    <f:entry title="Credentials" field="credentialsId" description="Credentials to use to access the docker server">
                         <c:select/>
                     </f:entry>
 
