@@ -37,7 +37,7 @@
                         <f:textbox/>
                     </f:entry>
 
-                    <f:entry title="Max Executors" field="maxExecutors">
+                    <f:entry title="Max Concurrent Jobs" field="maxExecutors">
                         <f:number default="1"/>
                     </f:entry>
 
