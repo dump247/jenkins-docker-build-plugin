@@ -321,6 +321,12 @@ public class DockerCloud implements Describable<DockerCloud> {
                     ? FormValidation.error("Invalid port value. Must be between 1 and 65535.")
                     : FormValidation.ok();
         }
+
+        public FormValidation doCheckMaxExecutors(@QueryParameter int value) {
+            return value < 1
+                    ? FormValidation.error("Invalid limit value. Must be greater than or equal to 1.")
+                    : FormValidation.ok();
+        }
     }
 
     private static final class HostCount implements Comparable<HostCount> {
