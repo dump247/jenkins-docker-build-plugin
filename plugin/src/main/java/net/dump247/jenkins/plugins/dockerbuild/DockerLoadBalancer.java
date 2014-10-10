@@ -4,6 +4,7 @@ import com.google.common.base.Optional;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
 import hudson.model.Computer;
+import hudson.model.Job;
 import hudson.model.LoadBalancer;
 import hudson.model.Queue;
 import hudson.model.labels.LabelAtom;
@@ -17,6 +18,7 @@ import java.util.Set;
 import java.util.logging.Logger;
 
 import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Strings.isNullOrEmpty;
 import static com.google.common.collect.Maps.newHashMap;
 import static java.lang.String.format;
 
@@ -44,18 +46,21 @@ public class DockerLoadBalancer extends LoadBalancer {
         Mapping mapping = worksheet.new Mapping();
         boolean[] provisionedNodes = new boolean[worksheet.works.size()];
         int provisionedNodeCount = 0;
-        DockerBuildConfiguration configuration = DockerBuildConfiguration.get();
+        DockerGlobalConfiguration configuration = DockerGlobalConfiguration.get();
 
         for (int workIndex = 0; workIndex < worksheet.works.size(); workIndex++) {
             WorkChunk workChunk = worksheet.works(workIndex);
-            WorkSlave workSlave = loadSlave(configuration, workChunk);
+            WorkSlave workSlave = loadSlave(configuration, task, workChunk);
 
             if (workSlave == null) {
+                LOG.info("No docker slave found");
                 continue;
             }
 
             if (workSlave.isReady()) {
                 ExecutorChunk workChunkExecutor = workSlave.findExecutor(workChunk);
+
+                LOG.info(format("Executor: %s", workChunkExecutor));
 
                 if (workChunkExecutor != null) {
                     mapping.assign(workIndex, workChunkExecutor);
@@ -84,11 +89,11 @@ public class DockerLoadBalancer extends LoadBalancer {
                 : null;
     }
 
-    private WorkSlave loadSlave(DockerBuildConfiguration configuration, WorkChunk workChunk) {
+    private WorkSlave loadSlave(DockerGlobalConfiguration configuration, Queue.Task task, WorkChunk workChunk) {
         DockerSlave slave = _provisionedSlaves.get(workChunk);
 
         if (slave == null) {
-            ProvisionResult result = provisionSlave(configuration, workChunk);
+            ProvisionResult result = provisionSlave(configuration, task, workChunk);
 
             if (!result.isSupported()) {
                 return null;
@@ -105,7 +110,7 @@ public class DockerLoadBalancer extends LoadBalancer {
         if (slaveComputer == null) {
             _provisionedSlaves.remove(workChunk);
 
-            ProvisionResult result = provisionSlave(configuration, workChunk);
+            ProvisionResult result = provisionSlave(configuration, task, workChunk);
 
             if (!result.isSupported()) {
                 return null;
@@ -126,20 +131,55 @@ public class DockerLoadBalancer extends LoadBalancer {
         return new WorkSlave(slave, slaveComputer);
     }
 
-    public ProvisionResult provisionSlave(DockerBuildConfiguration configuration, MappingWorksheet.WorkChunk workChunk) {
+    public ProvisionResult provisionSlave(DockerGlobalConfiguration configuration, Queue.Task task, MappingWorksheet.WorkChunk workChunk) {
         boolean isSupported = false;
 
-        for (LabeledDockerImage image : configuration.getLabeledImages()) {
-            Set<LabelAtom> imageLabels = Sets.union(image.getLabels(), ImmutableSet.of(new LabelAtom("docker/" + image.imageName)));
+        if (task instanceof Job) {
+            Job job = (Job) task;
+            DockerJobProperty jobProperty = (DockerJobProperty) job.getProperty(DockerJobProperty.class);
 
-            for (DockerCloud cloud : configuration.getClouds()) {
-                ProvisionResult provisionResult = cloud.provisionJob(workChunk.assignedLabel, image.imageName, imageLabels);
+            if (jobProperty != null && !isNullOrEmpty(jobProperty.getImageName())) {
+                // User has explicitly enabled docker, so provisioning is always supported, even if
+                // none of the docker hosts can run the job (i.e. labels don't match)
+                isSupported = true;
+
+                Set<LabelAtom> imageLabels = ImmutableSet.of(new LabelAtom("docker/" + jobProperty.getImageName()));
+                ProvisionResult provisionResult = provisionSlaveInCloud(configuration.getClouds(), jobProperty.getImageName(), workChunk, imageLabels);
+
+                if (provisionResult.isProvisioned()) {
+                    return provisionResult;
+                }
+            }
+        }
+
+        if (!isSupported) {
+            for (LabeledDockerImage image : configuration.getLabeledImages()) {
+                Set<LabelAtom> imageLabels = Sets.union(image.getLabels(), ImmutableSet.of(new LabelAtom("docker/" + image.imageName)));
+                ProvisionResult provisionResult = provisionSlaveInCloud(configuration.getClouds(), image.imageName, workChunk, imageLabels);
 
                 if (provisionResult.isProvisioned()) {
                     return provisionResult;
                 } else if (provisionResult.isSupported()) {
                     isSupported = true;
                 }
+            }
+        }
+
+        return isSupported
+                ? ProvisionResult.noCapacity()
+                : ProvisionResult.notSupported();
+    }
+
+    private ProvisionResult provisionSlaveInCloud(Iterable<DockerCloud> clouds, String imageName, WorkChunk workChunk, Set<LabelAtom> imageLabels) {
+        boolean isSupported = false;
+
+        for (DockerCloud cloud : clouds) {
+            ProvisionResult provisionResult = cloud.provisionJob(Optional.fromNullable(workChunk.assignedLabel), imageName, imageLabels);
+
+            if (provisionResult.isProvisioned()) {
+                return provisionResult;
+            } else if (provisionResult.isSupported()) {
+                isSupported = true;
             }
         }
 

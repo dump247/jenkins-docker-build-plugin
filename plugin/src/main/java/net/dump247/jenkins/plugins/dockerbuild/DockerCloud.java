@@ -7,6 +7,7 @@ import com.cloudbees.plugins.credentials.common.StandardCredentials;
 import com.cloudbees.plugins.credentials.common.StandardListBoxModel;
 import com.cloudbees.plugins.credentials.common.StandardUsernamePasswordCredentials;
 import com.cloudbees.plugins.credentials.domains.SchemeRequirement;
+import com.google.common.base.Optional;
 import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -233,14 +234,13 @@ public class DockerCloud implements Describable<DockerCloud> {
         return _labels;
     }
 
-    public ProvisionResult provisionJob(Label jobLabel, String imageName, Set<LabelAtom> imageLabels) {
-        checkNotNull(jobLabel);
+    public ProvisionResult provisionJob(Optional<Label> jobLabel, String imageName, Set<LabelAtom> imageLabels) {
         checkNotNull(imageName);
         checkNotNull(imageLabels);
 
         Set<LabelAtom> cloudImageLabels = Sets.union(imageLabels, getLabels());
 
-        if (!jobLabel.matches(cloudImageLabels)) {
+        if (jobLabel.isPresent() && !jobLabel.get().matches(cloudImageLabels)) {
             return ProvisionResult.notSupported();
         }
 

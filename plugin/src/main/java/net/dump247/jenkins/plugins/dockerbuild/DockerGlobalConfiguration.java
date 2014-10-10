@@ -17,11 +17,11 @@ import static com.google.common.base.Preconditions.checkNotNull;
  * The configuration shows up in the jenkins server settings page.
  */
 @Extension
-public class DockerBuildConfiguration extends GlobalConfiguration {
+public class DockerGlobalConfiguration extends GlobalConfiguration {
     private List<LabeledDockerImage> _labeledImages = ImmutableList.of();
     private List<DockerCloud> _clouds = ImmutableList.of();
 
-    public DockerBuildConfiguration() {
+    public DockerGlobalConfiguration() {
         // Classes deriving from GlobalConfiguration must call load() in their constructor
         load();
     }
@@ -38,8 +38,8 @@ public class DockerBuildConfiguration extends GlobalConfiguration {
      * <p/>
      * See {@link jenkins.model.GlobalConfiguration#all()}
      */
-    public static DockerBuildConfiguration get() {
-        return GlobalConfiguration.all().get(DockerBuildConfiguration.class);
+    public static DockerGlobalConfiguration get() {
+        return GlobalConfiguration.all().get(DockerGlobalConfiguration.class);
     }
 
     public List<LabeledDockerImage> getLabeledImages() {
