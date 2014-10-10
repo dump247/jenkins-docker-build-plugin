@@ -1,0 +1,32 @@
+<p>
+    Bind directories from the host machine to paths in the container. If the parent directories do
+    not exist in the container, they will be created. If a directory already exists with the same
+    path in the container, the host directory will be mounted at the given path and will hide the
+    original directory on the container filesystem.
+</p>
+
+<p>
+    A directory can be mapped read-only. The files will still display the same permissions as the
+    host system, but any write attempts will fail.
+</p>
+
+<h2>Format</h2>
+
+<p>
+    Blank lines and lines with only whitespace are ignored. Everything from the first
+    <em>#</em> to the end of the line is ignored. Default access is read-only.
+</p>
+
+<table>
+<thead>
+    <tr><th>Format</th><th>Description</th></tr>
+</thead>
+<tbody>
+    <tr><td>/a/path</td><td>Map <em>/a/path/</em> in the host to <em>/a/path/</em> in the container, read-only.</td></tr>
+    <tr><td>/a/path:r</td><td>Map <em>/a/path/</em> in the host to <em>/a/path/</em> in the container, read-only.</td></tr>
+    <tr><td>/a/path:rw</td><td>Map <em>/a/path/</em> in the host to <em>/a/path/</em> in the container with write access.</td></tr>
+    <tr><td>/host/path:/container/path</td><td>Map <em>/host/path/</em> in the host to <em>/container/path/</em> in the container, read-only.</td></tr>
+    <tr><td>/host/path:/container/path:r</td><td>Map <em>/host/path/</em> in the host to <em>/container/path/</em> in the container, read-only.</td></tr>
+    <tr><td>/host/path:/container/path:rw</td><td>Map <em>/host/path/</em> in the host to <em>/container/path/</em> in the container with write access.</td></tr>
+</tbody>
+</table>
