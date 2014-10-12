@@ -1,0 +1,13 @@
+#!/bin/bash
+
+set -o nounset
+
+docker ps -a | while read -r line; do
+    container_id=$(echo "${line}" | cut -c 1-20)
+    exited=$(echo "${line}" | cut -c 93-117)
+
+    if [[ "${exited}" =~ hours|days|weeks|months|years ]]; then
+        echo Removing container ${container_id} that ${exited}
+        docker rm ${container_id} >/dev/null
+    fi
+done

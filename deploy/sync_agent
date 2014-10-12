@@ -1,0 +1,28 @@
+#!/bin/bash
+
+####################
+#
+# Synchronize the local agent.jar with the current version from
+# the Jenkins master server.
+#
+####################
+
+JENKINS_URL=hostname:8080
+
+set -o errexit
+set -o nounset
+
+TEMP_FILE=$(mktemp)
+
+function cleanup {
+    rm "${TEMP_FILE}"
+}
+
+trap cleanup EXIT
+
+curl --retry 3                          \
+     --fail                             \
+     --output "${TEMP_FILE}"            \
+     ${JENKINS_URL}/jnlpJars/slave.jar
+
+mv "${TEMP_FILE}" /var/lib/jenkins/agent.jar
