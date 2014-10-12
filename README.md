@@ -16,4 +16,4 @@ information on setting up and configuring the plugin and docker.
 
 The MIT License (MIT) Copyright (c) 2014 Cory Thomas
 
-See LICENSE
+See [LICENSE](LICENSE)
