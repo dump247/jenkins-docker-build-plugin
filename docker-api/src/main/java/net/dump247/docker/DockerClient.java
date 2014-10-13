@@ -806,6 +806,9 @@ public class DockerClient {
             switch (ex.getResponse().getStatus()) {
                 case 404:
                     throw new ContainerNotFoundException(format("Container %s does not exist.", request.getContainerId()), ex);
+                case 304:
+                    // The container's status has not changed. The container must already have been stopped.
+                    return;
                 case 500:
                     throw new DockerException("Server error", ex);
                 default:
