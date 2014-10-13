@@ -23,6 +23,7 @@ import hudson.util.ListBoxModel;
 import jenkins.model.Jenkins;
 import net.dump247.docker.DirectoryBinding;
 import net.dump247.docker.DockerClient;
+import net.dump247.jenkins.plugins.dockerbuild.log.Logger;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.QueryParameter;
 
@@ -42,8 +43,6 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Strings.isNullOrEmpty;
@@ -56,7 +55,7 @@ import static java.util.Collections.unmodifiableSet;
  * Set of machines to run jenkins slave docker containers on.
  */
 public class DockerCloud implements Describable<DockerCloud> {
-    private static final Logger LOG = Logger.getLogger(DockerCloud.class.getName());
+    private static final Logger LOG = Logger.get(DockerCloud.class);
     private static final SchemeRequirement HTTPS_SCHEME = new SchemeRequirement("https");
     private static final Map<String, DirectoryBinding.Access> BINDING_ACCESS = ImmutableMap.of(
             "r", DirectoryBinding.Access.READ,
@@ -96,8 +95,6 @@ public class DockerCloud implements Describable<DockerCloud> {
      * Initialize transient fields after deserialization.
      */
     protected Object readResolve() {
-        LOG.info(format("Credentials: %s %s", tlsEnabled, credentialsId));
-
         ImmutableList.Builder<DockerCloudHost> dockerHosts = ImmutableList.builder();
 
         for (String host : nullToEmpty(this.hostString).split("[,\\s]+")) {
@@ -246,10 +243,10 @@ public class DockerCloud implements Describable<DockerCloud> {
 
         for (HostCount host : listAvailableHosts()) {
             try {
-                LOG.info(format("Provisioning node: [host=%s] [load=%d]", host.host, host.count));
+                LOG.info("Provisioning node: host={0} capacity={1}", host.host, host.capacity);
                 return ProvisionResult.provisioned(host.host.provisionSlave(imageName, cloudImageLabels, _directoryMappings));
             } catch (IOException ex) {
-                LOG.log(Level.WARNING, format("Error provisioning node: [host=%s] [load=%d]", host.host, host.count), ex);
+                LOG.warn("Error provisioning node: host={0}", host.host, ex);
             }
         }
 
@@ -271,7 +268,7 @@ public class DockerCloud implements Describable<DockerCloud> {
             }
         }
 
-        // Sort from lowest to highest load so we attempt to provision on least busy node first
+        // Sort from highest to lowest so we attempt to provision on least busy node first
         Collections.sort(availableHosts);
 
         return availableHosts;
@@ -285,8 +282,6 @@ public class DockerCloud implements Describable<DockerCloud> {
         }
 
         public ListBoxModel doFillCredentialsIdItems() {
-            LOG.info("(cloud) Filling credentials ids");
-
             return new StandardListBoxModel()
                     .withEmptySelection()
                     .withMatching(
@@ -330,17 +325,17 @@ public class DockerCloud implements Describable<DockerCloud> {
     }
 
     private static final class HostCount implements Comparable<HostCount> {
-        public final int count;
+        public final int capacity;
         public final DockerCloudHost host;
 
-        public HostCount(DockerCloudHost host, int count) {
+        public HostCount(DockerCloudHost host, int capacity) {
             this.host = host;
-            this.count = count;
+            this.capacity = capacity;
         }
 
         public int compareTo(final HostCount hostCount) {
-            // Sort from lowest to highest count
-            return this.count - hostCount.count;
+            // Sort from highest to lowest
+            return hostCount.capacity - this.capacity;
         }
     }
 

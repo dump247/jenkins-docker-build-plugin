@@ -7,13 +7,13 @@ import hudson.model.labels.LabelAtom;
 import jenkins.model.Jenkins;
 import net.dump247.docker.DirectoryBinding;
 import net.dump247.docker.DockerClient;
+import net.dump247.jenkins.plugins.dockerbuild.log.Logger;
 import org.apache.commons.lang.RandomStringUtils;
 
 import java.io.IOException;
 import java.net.URI;
 import java.util.List;
 import java.util.Set;
-import java.util.logging.Logger;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 import static java.lang.String.format;
@@ -22,8 +22,6 @@ import static java.lang.String.format;
  * Machine that starts jenkins slaves inside of docker containers.
  */
 public class DockerCloudHost {
-    private static final Logger LOG = Logger.getLogger(DockerCloudHost.class.getName());
-
     private final DockerClient _dockerClient;
 
     public DockerCloudHost(URI dockerEndpoint) {
@@ -54,8 +52,6 @@ public class DockerCloudHost {
             }
         }
 
-        LOG.info(format("count: %d, endpoint: %s", count, _dockerClient.getEndpoint()));
-
         return count;
     }
 
@@ -75,10 +71,8 @@ public class DockerCloudHost {
 
             Jenkins.getInstance().addNode(slave);
 
-            LOG.info("Starting slave computer...");
             Computer slaveComputer = slave.toComputer();
             slaveComputer.connect(false);
-            LOG.info("Slave computer started: " + slaveComputer.getClass());
 
             return slave;
         } catch (Descriptor.FormException ex) {

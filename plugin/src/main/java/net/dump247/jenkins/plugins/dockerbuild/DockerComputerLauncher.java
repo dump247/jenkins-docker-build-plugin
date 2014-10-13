@@ -17,19 +17,18 @@ import net.dump247.docker.DockerException;
 import net.dump247.docker.ProgressEvent;
 import net.dump247.docker.ProgressListener;
 import net.dump247.docker.StartContainerRequest;
+import net.dump247.jenkins.plugins.dockerbuild.log.Logger;
 import org.apache.commons.lang.mutable.MutableInt;
 
 import java.io.IOException;
 import java.io.PrintStream;
 import java.util.List;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
 import static com.google.common.collect.Lists.newArrayListWithCapacity;
 import static java.lang.String.format;
 
 public class DockerComputerLauncher extends ComputerLauncher {
-    private static final Logger LOG = Logger.getLogger(DockerComputerLauncher.class.getName());
+    private static final Logger LOG = Logger.get(DockerComputerLauncher.class);
     private static final String JENKINS_HOST_SHARED = "/var/lib/jenkins";
     private static final String JENKINS_CONTAINER_SHARED = "/var/lib/jenkins/host";
     public static final String JENKINS_CONTAINER_HOME = "/var/lib/jenkins/home";
@@ -71,15 +70,14 @@ public class DockerComputerLauncher extends ComputerLauncher {
 
     @Override
     public void launch(final SlaveComputer computer, final TaskListener listener) throws IOException, InterruptedException {
-        LOG.info("Launching!!!!");
         pullImage(listener);
         listener.getLogger().println(format("### Running job with Docker image %s", _imageName));
         final String containerId = createContainer(listener);
 
-        LOG.info(format("Attaching container streams: [containerId=%s]", containerId));
+        LOG.debug("Attaching container streams: containerId={0}", containerId);
         final DockerClient.ContainerStreams streams = _dockerClient.attachContainerStreams(containerId);
 
-        LOG.info(format("Starting container: [containerId=%s]", containerId));
+        LOG.debug("Starting container: containerId={0}", containerId);
         _dockerClient.startContainer(new StartContainerRequest()
                 .withContainerId(containerId)
                 .withBindings(ImmutableList.<DirectoryBinding>builder()
@@ -94,21 +92,21 @@ public class DockerComputerLauncher extends ComputerLauncher {
             @Override
             public void onClosed(final Channel channel, final IOException cause) {
                 try {
-                    LOG.info(format("Closing container stdin: [containerId=%s]", containerId));
+                    LOG.debug("Closing container stdin: containerId={0}", containerId);
                     streams.stdin.close();
                 } catch (Throwable ex) {
-                    LOG.log(Level.INFO, format("Error closing container stdin: [containerId=%s]", containerId), ex);
+                    LOG.debug("Error closing container stdin: containerId={0}", containerId, ex);
                 }
 
                 try {
-                    LOG.info(format("Closing container stdout: [containerId=%s]", containerId));
+                    LOG.debug("Closing container stdout: containerId={0}", containerId);
                     streams.stdout.close();
                 } catch (Throwable ex) {
-                    LOG.log(Level.INFO, format("Error closing container stdout: [containerId=%s]", containerId), ex);
+                    LOG.debug("Error closing container stdout: containerId={0}", containerId, ex);
                 }
 
                 try {
-                    LOG.info(format("Closing container stderr: [containerId=%s]", containerId));
+                    LOG.debug("Closing container stderr: containerId={0}", containerId);
                     stderrThread.join(2000);
                     stderrThread.interrupt();
                 } catch (InterruptedException ex) {
@@ -116,20 +114,22 @@ public class DockerComputerLauncher extends ComputerLauncher {
                 }
 
                 try {
-                    LOG.info(format("Stopping container: [containerId=%s]", containerId));
+                    LOG.debug("Stopping container: containerId={0}", containerId);
                     _dockerClient.stopContainer(containerId);
                 } catch (ContainerNotFoundException ex) {
-                    LOG.log(Level.FINE, format("Container not found: [containerId=%s]", containerId), ex);
+                    LOG.debug("Container not found: containerId={0}", containerId, ex);
                 } catch (DockerException ex) {
-                    ex.printStackTrace(listener.error("Error removing removing container: [containerId=%s]", containerId));
+                    LOG.warn("Error stopping container: containerId={0}", containerId, ex);
+                    ex.printStackTrace(listener.error("Error stopping removing container: [containerId=%s]", containerId));
                 }
 
                 try {
-                    LOG.info(format("Removing container: [containerId=%s]", containerId));
+                    LOG.debug("Removing container: containerId={0}", containerId);
                     _dockerClient.removeContainer(containerId);
                 } catch (ContainerNotFoundException ex) {
-                    LOG.log(Level.FINE, format("Container not found: [containerId=%s]", containerId), ex);
+                    LOG.debug("Container not found: containerId={0}", containerId, ex);
                 } catch (DockerException ex) {
+                    LOG.warn("Error removing container: containerId={0}", containerId, ex);
                     ex.printStackTrace(listener.error("Error removing removing container: [containerId=%s]", containerId));
                 }
             }
@@ -137,7 +137,7 @@ public class DockerComputerLauncher extends ComputerLauncher {
     }
 
     private String createContainer(final TaskListener listener) throws IOException {
-        LOG.info(format("Creating container: [image=%s] [endpoint=%s]", _imageName, _dockerClient));
+        LOG.debug("Creating container: image={0} endpoint={1}", _imageName, _dockerClient);
 
         List<ContainerVolume> volumes = newArrayListWithCapacity(_directoryBindings.size() + 1);
         volumes.add(new ContainerVolume(JENKINS_CONTAINER_SHARED));
@@ -158,7 +158,7 @@ public class DockerComputerLauncher extends ComputerLauncher {
                 .withCommand("/bin/bash", "-c", SLAVE_SCRIPT));
 
         for (String warning : response.getWarnings()) {
-            LOG.warning(warning);
+            LOG.warn("Warning from docker creating container: image={0}, containerId={1}, message={2}", _imageName, response.getContainerId(), warning);
             listener.getLogger().println(format("DOCKER WARN: %s", warning));
         }
 
@@ -169,8 +169,6 @@ public class DockerComputerLauncher extends ComputerLauncher {
         final PrintStream logger = listener.getLogger();
         final MutableInt counter = new MutableInt();
 
-        LOG.info(format("Pulling image: [image=%s] [endpoint=%s]", _imageName, _dockerClient.getEndpoint()));
-
         _dockerClient.pullImage(_imageName, new ProgressListener() {
             public void progress(final ProgressEvent event) {
                 // Only print out progress or error messages
@@ -179,7 +177,7 @@ public class DockerComputerLauncher extends ComputerLauncher {
                 }
 
                 if (counter.intValue() == 0) {
-                    LOG.info(format("Pulling docker image %s", _imageName));
+                    LOG.info("Pulling docker image: image={0}, host={1}", _imageName, _dockerClient.getEndpoint());
                     logger.println(format("### Pulling Docker image %s", _imageName));
                 }
 

@@ -10,18 +10,17 @@ import hudson.remoting.VirtualChannel;
 import hudson.slaves.EphemeralNode;
 import hudson.slaves.NodeProperty;
 import jenkins.model.Jenkins;
+import net.dump247.jenkins.plugins.dockerbuild.log.Logger;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Set;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
 import static java.lang.String.format;
 
 /** Slave that runs a job in a docker image. */
 public class DockerSlave extends Slave implements EphemeralNode {
-    private static final Logger LOG = Logger.getLogger(DockerSlave.class.getName());
+    private static final Logger LOG = Logger.get(DockerSlave.class);
 
     public DockerSlave(final String name,
                        final String nodeDescription,
@@ -56,7 +55,7 @@ public class DockerSlave extends Slave implements EphemeralNode {
             try {
                 Jenkins.getInstance().removeNode(this);
             } catch (IOException e) {
-                LOG.log(Level.WARNING, format("Failed to remove node: [name=%s]", this.name), e);
+                LOG.warn("Failed to remove jenkins node: name={0}", this.name, e);
             }
         }
     }
