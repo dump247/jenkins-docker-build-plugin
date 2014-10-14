@@ -29,6 +29,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static java.lang.String.format;
 
@@ -622,7 +623,10 @@ public class DockerClient {
                     ? _sslContext.getSocketFactory().createSocket(_apiEndpoint.getHost(), _apiEndpoint.getPort())
                     : new Socket(_apiEndpoint.getHost(), _apiEndpoint.getPort());
 
-            OutputStream socketOut = socket.getOutputStream();
+
+            AtomicInteger shutdown = new AtomicInteger();
+            OutputStream socketOut = new DualOutputStream(socket.getOutputStream(), shutdown);
+
             socketOut.write(("" +
                     format("POST %s HTTP/1.0\r\n", path(uri)) +
                     format("Accept: %s\r\n", APPLICATION_DOCKER_RAW_STREAM) +
@@ -631,7 +635,7 @@ public class DockerClient {
                     "\r\n"
             ).getBytes());
 
-            InputStream socketIn = socket.getInputStream();
+            InputStream socketIn = new DualInputStream(socket.getInputStream(), shutdown);
 
             // TODO better response processing
             int ch;
@@ -914,6 +918,100 @@ public class DockerClient {
 
     private WebResource.Builder api(String path, Object... args) {
         return json(resource(path, args));
+    }
+
+    private static class DualOutputStream extends OutputStream {
+        private final OutputStream _wrapped;
+        private final AtomicInteger _counter;
+
+        public DualOutputStream(OutputStream wrapped, AtomicInteger counter) {
+            _wrapped = wrapped;
+            _counter = counter;
+        }
+
+        @Override
+        public void write(int b) throws IOException {
+            _wrapped.write(b);
+        }
+
+        @Override
+        public void write(byte[] b) throws IOException {
+            _wrapped.write(b);
+        }
+
+        @Override
+        public void write(byte[] b, int off, int len) throws IOException {
+            _wrapped.write(b, off, len);
+        }
+
+        @Override
+        public void flush() throws IOException {
+            _wrapped.flush();
+        }
+
+        @Override
+        public void close() throws IOException {
+            if (_counter.incrementAndGet() == 2) {
+                _wrapped.close();
+            }
+        }
+    }
+
+    private static class DualInputStream extends InputStream {
+        private final InputStream _wrapped;
+        private final AtomicInteger _counter;
+
+        public DualInputStream(InputStream wrapped, AtomicInteger counter) {
+            _wrapped = wrapped;
+            _counter = counter;
+        }
+
+        @Override
+        public int read() throws IOException {
+            return _wrapped.read();
+        }
+
+        @Override
+        public int read(byte[] b) throws IOException {
+            return _wrapped.read(b);
+        }
+
+        @Override
+        public int read(byte[] b, int off, int len) throws IOException {
+            return _wrapped.read(b, off, len);
+        }
+
+        @Override
+        public long skip(long n) throws IOException {
+            return _wrapped.skip(n);
+        }
+
+        @Override
+        public int available() throws IOException {
+            return _wrapped.available();
+        }
+
+        @Override
+        public void close() throws IOException {
+            if (_counter.incrementAndGet() == 2) {
+                _wrapped.close();
+            }
+        }
+
+        @Override
+        public synchronized void mark(int readlimit) {
+            _wrapped.mark(readlimit);
+        }
+
+        @Override
+        public synchronized void reset() throws IOException {
+            _wrapped.reset();
+        }
+
+        @Override
+        public boolean markSupported() {
+            return _wrapped.markSupported();
+        }
     }
 
     private static class MultiplexedStream {
