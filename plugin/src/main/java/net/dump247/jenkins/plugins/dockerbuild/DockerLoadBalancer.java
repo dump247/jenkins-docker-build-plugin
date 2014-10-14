@@ -24,6 +24,7 @@ import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.collect.Maps.newHashMap;
 
 public class DockerLoadBalancer extends LoadBalancer {
+    private static final String IMAGE_LABEL_PREFIX = "docker/";
     private static final Logger LOG = Logger.get(DockerLoadBalancer.class);
     private static final LoadBalancer NULL_LOAD_BALANCER = new LoadBalancer() {
         @Override
@@ -148,7 +149,7 @@ public class DockerLoadBalancer extends LoadBalancer {
 
         if (!isSupported) {
             for (LabeledDockerImage image : configuration.getLabeledImages()) {
-                Set<LabelAtom> imageLabels = Sets.union(image.getLabels(), ImmutableSet.of(new LabelAtom("docker/" + image.imageName)));
+                Set<LabelAtom> imageLabels = Sets.union(image.getLabels(), ImmutableSet.of(new LabelAtom(IMAGE_LABEL_PREFIX + image.imageName)));
                 ProvisionResult provisionResult = provisionSlaveInCloud(configuration.getClouds(), image.imageName, workChunk, imageLabels);
 
                 if (provisionResult.isProvisioned()) {
@@ -165,7 +166,7 @@ public class DockerLoadBalancer extends LoadBalancer {
     }
 
     private String extractImageName(LabelAtom imageLabel) {
-        return imageLabel.toString().substring("docker/".length());
+        return imageLabel.toString().substring(IMAGE_LABEL_PREFIX.length());
     }
 
     public List<LabelAtom> listPotentialImages(Label jobLabel) {
@@ -181,7 +182,7 @@ public class DockerLoadBalancer extends LoadBalancer {
             LabelAtom imageLabel = (LabelAtom) jobLabel;
             String labelStr = imageLabel.toString();
 
-            if (labelStr.startsWith("docker/") && labelStr.length() > "docker/".length()) {
+            if (labelStr.startsWith(IMAGE_LABEL_PREFIX) && labelStr.length() > IMAGE_LABEL_PREFIX.length()) {
                 results.add((LabelAtom) jobLabel);
             }
 
