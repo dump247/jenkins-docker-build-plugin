@@ -1,10 +1,11 @@
 package net.dump247.jenkins.plugins.dockerbuild;
 
 import com.google.common.base.Optional;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
 import hudson.model.Computer;
-import hudson.model.Job;
+import hudson.model.Label;
 import hudson.model.LoadBalancer;
 import hudson.model.Queue;
 import hudson.model.labels.LabelAtom;
@@ -14,11 +15,12 @@ import hudson.model.queue.MappingWorksheet.Mapping;
 import hudson.model.queue.MappingWorksheet.WorkChunk;
 import net.dump247.jenkins.plugins.dockerbuild.log.Logger;
 
+import java.lang.reflect.Field;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 import static com.google.common.base.Preconditions.checkNotNull;
-import static com.google.common.base.Strings.isNullOrEmpty;
 import static com.google.common.collect.Maps.newHashMap;
 
 public class DockerLoadBalancer extends LoadBalancer {
@@ -49,7 +51,7 @@ public class DockerLoadBalancer extends LoadBalancer {
 
         for (int workIndex = 0; workIndex < worksheet.works.size(); workIndex++) {
             WorkChunk workChunk = worksheet.works(workIndex);
-            WorkSlave workSlave = loadSlave(configuration, task, workChunk);
+            WorkSlave workSlave = loadSlave(configuration, workChunk);
 
             if (workSlave == null) {
                 LOG.debug("No docker slave found for chunk {0}", workIndex);
@@ -88,11 +90,11 @@ public class DockerLoadBalancer extends LoadBalancer {
                 : null;
     }
 
-    private WorkSlave loadSlave(DockerGlobalConfiguration configuration, Queue.Task task, WorkChunk workChunk) {
+    private WorkSlave loadSlave(DockerGlobalConfiguration configuration, WorkChunk workChunk) {
         DockerSlave slave = _provisionedSlaves.get(workChunk);
 
         if (slave == null) {
-            ProvisionResult result = provisionSlave(configuration, task, workChunk);
+            ProvisionResult result = provisionSlave(configuration, workChunk);
 
             if (!result.isSupported()) {
                 return null;
@@ -109,7 +111,7 @@ public class DockerLoadBalancer extends LoadBalancer {
         if (slaveComputer == null) {
             _provisionedSlaves.remove(workChunk);
 
-            ProvisionResult result = provisionSlave(configuration, task, workChunk);
+            ProvisionResult result = provisionSlave(configuration, workChunk);
 
             if (!result.isSupported()) {
                 return null;
@@ -130,24 +132,17 @@ public class DockerLoadBalancer extends LoadBalancer {
         return new WorkSlave(slave, slaveComputer);
     }
 
-    public ProvisionResult provisionSlave(DockerGlobalConfiguration configuration, Queue.Task task, MappingWorksheet.WorkChunk workChunk) {
+    public ProvisionResult provisionSlave(DockerGlobalConfiguration configuration, WorkChunk workChunk) {
         boolean isSupported = false;
 
-        if (task instanceof Job) {
-            Job job = (Job) task;
-            DockerJobProperty jobProperty = (DockerJobProperty) job.getProperty(DockerJobProperty.class);
+        for (LabelAtom potentialImage : listPotentialImages(workChunk.assignedLabel)) {
+            Set<LabelAtom> imageLabels = ImmutableSet.of(potentialImage);
+            ProvisionResult provisionResult = provisionSlaveInCloud(configuration.getClouds(), extractImageName(potentialImage), workChunk, imageLabels);
 
-            if (jobProperty != null && !isNullOrEmpty(jobProperty.getImageName())) {
-                // User has explicitly enabled docker, so provisioning is always supported, even if
-                // none of the docker hosts can run the job (i.e. labels don't match)
+            if (provisionResult.isProvisioned()) {
+                return provisionResult;
+            } else if (provisionResult.isSupported()) {
                 isSupported = true;
-
-                Set<LabelAtom> imageLabels = ImmutableSet.of(new LabelAtom("docker/" + jobProperty.getImageName()));
-                ProvisionResult provisionResult = provisionSlaveInCloud(configuration.getClouds(), jobProperty.getImageName(), workChunk, imageLabels);
-
-                if (provisionResult.isProvisioned()) {
-                    return provisionResult;
-                }
             }
         }
 
@@ -167,6 +162,43 @@ public class DockerLoadBalancer extends LoadBalancer {
         return isSupported
                 ? ProvisionResult.noCapacity()
                 : ProvisionResult.notSupported();
+    }
+
+    private String extractImageName(LabelAtom imageLabel) {
+        return imageLabel.toString().substring("docker/".length());
+    }
+
+    public List<LabelAtom> listPotentialImages(Label jobLabel) {
+        return discoverPotentialImages(jobLabel, ImmutableList.<LabelAtom>builder()).build();
+    }
+
+    public ImmutableList.Builder<LabelAtom> discoverPotentialImages(Label jobLabel, ImmutableList.Builder<LabelAtom> results) {
+        if (jobLabel == null) {
+            return results;
+        }
+
+        if (jobLabel instanceof LabelAtom) {
+            LabelAtom imageLabel = (LabelAtom) jobLabel;
+            String labelStr = imageLabel.toString();
+
+            if (labelStr.startsWith("docker/") && labelStr.length() > "docker/".length()) {
+                results.add((LabelAtom) jobLabel);
+            }
+
+            return results;
+        }
+
+        for (Field field : jobLabel.getClass().getFields()) {
+            if (Label.class.isAssignableFrom(field.getType())) {
+                try {
+                    discoverPotentialImages((Label) field.get(jobLabel), results);
+                } catch (IllegalAccessException e) {
+                    LOG.warn("Error attempting to get value of label field: name={0} type={1}", field.getName(), jobLabel.getClass());
+                }
+            }
+        }
+
+        return results;
     }
 
     private ProvisionResult provisionSlaveInCloud(Iterable<DockerCloud> clouds, String imageName, WorkChunk workChunk, Set<LabelAtom> imageLabels) {
