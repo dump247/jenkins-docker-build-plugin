@@ -119,7 +119,7 @@ public class DockerComputerLauncher extends ComputerLauncher {
                 } catch (ContainerNotFoundException ex) {
                     LOG.debug("Container not found: containerId={0}", containerId, ex);
                 } catch (DockerException ex) {
-                    LOG.warn("Error stopping container: containerId={0}", containerId, ex);
+                    LOG.debug("Error stopping container: containerId={0}", containerId, ex);
                     ex.printStackTrace(listener.error("Error stopping removing container: [containerId=%s]", containerId));
                 }
 
