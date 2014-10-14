@@ -16,9 +16,9 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Set;
 
-import static java.lang.String.format;
-
-/** Slave that runs a job in a docker image. */
+/**
+ * Slave that runs a job in a docker image.
+ */
 public class DockerSlave extends Slave implements EphemeralNode {
     private static final Logger LOG = Logger.get(DockerSlave.class);
 
