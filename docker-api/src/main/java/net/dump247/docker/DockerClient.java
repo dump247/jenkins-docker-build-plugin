@@ -930,40 +930,50 @@ public class DockerClient {
         }
 
         public synchronized int read(final int streamNum, final byte[] bytes, final int off, final int len) throws IOException {
-            readHeader(streamNum);
+            try {
+                readHeader(streamNum);
 
-            if (_endOfStream) {
-                return -1;
+                if (_endOfStream) {
+                    return -1;
+                }
+
+                int readLen = (int) Math.min(_messageLen, len);
+                int readCount = _dataStream.read(bytes, off, readLen);
+
+                if (readCount < 0) {
+                    this.endOfStream();
+                    return -1;
+                }
+
+                _messageLen -= readCount;
+                return readCount;
+            } catch (IOException ex) {
+                endOfStream();
+                throw ex;
             }
-
-            int readLen = (int) Math.min(_messageLen, len);
-            int readCount = _dataStream.read(bytes, off, readLen);
-
-            if (readCount < 0) {
-                this.endOfStream();
-                return -1;
-            }
-
-            _messageLen -= readCount;
-            return readCount;
         }
 
         public synchronized int read(final int streamNum) throws IOException {
-            readHeader(streamNum);
+            try {
+                readHeader(streamNum);
 
-            if (_endOfStream) {
-                return -1;
+                if (_endOfStream) {
+                    return -1;
+                }
+
+                int value = _dataStream.read();
+
+                if (value < 0) {
+                    this.endOfStream();
+                    return -1;
+                }
+
+                _messageLen -= 1;
+                return value;
+            } catch (IOException ex) {
+                endOfStream();
+                throw ex;
             }
-
-            int value = _dataStream.read();
-
-            if (value < 0) {
-                this.endOfStream();
-                return -1;
-            }
-
-            _messageLen -= 1;
-            return value;
         }
 
         public synchronized void close(final int streamNum) throws IOException {
