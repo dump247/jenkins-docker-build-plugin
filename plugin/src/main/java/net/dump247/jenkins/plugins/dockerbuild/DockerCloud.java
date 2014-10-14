@@ -264,7 +264,7 @@ public class DockerCloud implements Describable<DockerCloud> {
             int count = host.countRunningJobs();
 
             if (count < this.maxExecutors) {
-                availableHosts.add(new HostCount(host, count));
+                availableHosts.add(new HostCount(host, this.maxExecutors - count));
             }
         }
 
