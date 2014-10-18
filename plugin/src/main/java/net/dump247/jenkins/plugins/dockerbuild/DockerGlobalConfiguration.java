@@ -3,6 +3,7 @@ package net.dump247.jenkins.plugins.dockerbuild;
 import com.google.common.collect.ImmutableList;
 import hudson.Extension;
 import jenkins.model.GlobalConfiguration;
+import jenkins.model.Jenkins;
 import net.sf.json.JSONObject;
 import org.kohsuke.stapler.StaplerRequest;
 
@@ -58,5 +59,9 @@ public class DockerGlobalConfiguration extends GlobalConfiguration {
     public void setClouds(final List<DockerCloud> clouds) {
         checkNotNull(clouds);
         _clouds = ImmutableList.copyOf(clouds);
+    }
+
+    public List<DockerCloud.Descriptor> getCloudDescriptors() {
+        return Jenkins.getInstance().getDescriptorList(DockerCloud.class);
     }
 }

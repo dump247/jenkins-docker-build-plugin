@@ -1,0 +1,36 @@
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core" xmlns:c="/lib/credentials"
+         xmlns:f="/lib/form" xmlns:st="jelly:stapler">
+
+    <table width="100%">
+        <st:include page="config-detail.jelly" optional="true" class="${descriptor.clazz}"/>
+
+        <f:entry title="Docker API Port" field="dockerPort"
+                 description="Standard Docker port numbers: http=4243 https=2376">
+            <f:number default="4243"/>
+        </f:entry>
+
+        <f:entry title="Labels" field="labelString">
+            <f:textbox/>
+        </f:entry>
+
+        <f:entry title="Max Concurrent Jobs" field="maxExecutors"
+                 description="Maximum number of jobs to run simultaneously on a host">
+            <f:number default="1"/>
+        </f:entry>
+
+        <f:entry title="Enable TLS" field="tlsEnabled">
+            <f:checkbox/>
+        </f:entry>
+
+        <f:entry title="Credentials" field="credentialsId"
+                 description="Credentials to use to access the docker server">
+            <c:select/>
+        </f:entry>
+
+        <f:entry title="Directory Mappings" field="directoryMappingsString">
+            <f:textarea/>
+        </f:entry>
+    </table>
+
+</j:jelly>
