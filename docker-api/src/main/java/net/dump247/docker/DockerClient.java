@@ -9,6 +9,8 @@ import com.sun.jersey.api.client.ClientHandlerException;
 import com.sun.jersey.api.client.ClientResponse;
 import com.sun.jersey.api.client.UniformInterfaceException;
 import com.sun.jersey.api.client.WebResource;
+import com.sun.jersey.api.client.config.ClientConfig;
+import com.sun.jersey.api.client.config.DefaultClientConfig;
 import com.sun.jersey.api.client.filter.HTTPBasicAuthFilter;
 import com.sun.jersey.client.urlconnection.HTTPSProperties;
 import com.sun.jersey.core.util.MultivaluedMapImpl;
@@ -72,6 +74,9 @@ public class DockerClient {
         if (!"http".equals(dockerEndpoint.getScheme()) && !"https".equals(dockerEndpoint.getScheme())) {
             throw new IllegalArgumentException(format("Unsupported endpoint scheme. Only http and https are supported: [dockerEndpoint=%s]", dockerEndpoint));
         }
+
+        _httpClient.getProperties().put(ClientConfig.PROPERTY_CONNECT_TIMEOUT, 2000);
+        _httpClient.getProperties().put(ClientConfig.PROPERTY_READ_TIMEOUT, 5000);
 
         if (sslContext == null && !"http".equals(dockerEndpoint.getScheme())) {
             // Attach currently directly uses sockets, so we need to ensure the jersey client and
