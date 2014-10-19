@@ -37,7 +37,7 @@ import static java.lang.String.format;
  * Client for interacting with docker.
  * <p/>
  * Only supports the docker API via TCP. You must bind docker to a TCP
- * port. For example: docker -H 127.0.0.1:4243
+ * port. For example: docker -H 127.0.0.1:2375
  */
 public class DockerClient {
     /**
@@ -46,9 +46,9 @@ public class DockerClient {
     public static final String API_VERSION = "v1.8";
 
     /**
-     * URI of the default local docker API endpoint (http://localhost:4243).
+     * URI of the default local docker API endpoint (http://localhost:2375).
      */
-    public static final URI DEFAULT_LOCAL_URI = URI.create("http://localhost:4243");
+    public static final URI DEFAULT_LOCAL_URI = URI.create("http://localhost:2375");
 
     public static final String APPLICATION_DOCKER_RAW_STREAM = "application/vnd.docker.raw-stream";
     public static final MediaType APPLICATION_DOCKER_RAW_STREAM_TYPE = MediaType.valueOf(APPLICATION_DOCKER_RAW_STREAM);

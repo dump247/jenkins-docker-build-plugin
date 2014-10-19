@@ -6,8 +6,8 @@
         <st:include page="config-detail.jelly" optional="true" class="${descriptor.clazz}"/>
 
         <f:entry title="Docker API Port" field="dockerPort"
-                 description="Standard Docker port numbers: http=4243 https=2376">
-            <f:number default="4243"/>
+                 description="Standard Docker port numbers: http=2375 https=2376">
+            <f:number default="2375"/>
         </f:entry>
 
         <f:entry title="Labels" field="labelString">
