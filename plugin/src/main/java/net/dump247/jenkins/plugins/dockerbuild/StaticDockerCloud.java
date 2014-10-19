@@ -14,8 +14,6 @@ import static com.google.common.base.Strings.nullToEmpty;
  * Set of machines to run jenkins slave docker containers on.
  */
 public class StaticDockerCloud extends DockerCloud {
-    private static final Logger LOG = Logger.get(StaticDockerCloud.class);
-
     public final String hostString;
     private transient List<DockerCloudHost> _hosts;
 
@@ -50,7 +48,7 @@ public class StaticDockerCloud extends DockerCloud {
     public static final class Descriptor extends DockerCloud.Descriptor {
         @Override
         public String getDisplayName() {
-            return "Static Cloud";
+            return "Static Hosts";
         }
     }
 }
