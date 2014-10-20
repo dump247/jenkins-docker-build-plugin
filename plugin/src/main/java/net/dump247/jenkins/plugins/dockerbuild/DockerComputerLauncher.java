@@ -29,16 +29,18 @@ import static java.lang.String.format;
 
 public class DockerComputerLauncher extends ComputerLauncher {
     private static final Logger LOG = Logger.get(DockerComputerLauncher.class);
-    private static final String JENKINS_HOST_SHARED = "/var/lib/jenkins";
-    private static final String JENKINS_CONTAINER_SHARED = "/var/lib/jenkins/host";
-    public static final String JENKINS_CONTAINER_HOME = "/var/lib/jenkins/home";
+
+    /**
+     * Path to directory that is automatically mapped from the host to each container.
+     * Value: {@value}
+     */
+    public static final String JENKINS_SHARED_DIR = "/var/lib/jenkins";
 
     /**
      * Bash script that launches the slave jar *
      */
     private static final String SLAVE_SCRIPT = "" +
-            "mkdir -p " + JENKINS_CONTAINER_HOME + "\n" +
-            "cp -f " + JENKINS_CONTAINER_SHARED + "/slave.jar " + JENKINS_CONTAINER_HOME + "/slave.jar\n" +
+            "cp -f " + JENKINS_SHARED_DIR + "/slave.jar /tmp/slave.jar\n" +
             "\n" +
             "JAVA_HOME=${JDK_HOME:-$JAVA_HOME}\n" +
             "if [[ -z \"${JAVA_HOME}\" ]]; then\n" +
@@ -52,7 +54,7 @@ public class DockerComputerLauncher extends ComputerLauncher {
             "    exit 2000\n" +
             "fi\n" +
             "\n" +
-            "\"${JAVA_BIN}\" -jar " + JENKINS_CONTAINER_HOME + "/slave.jar";
+            "\"${JAVA_BIN}\" -jar /tmp/slave.jar";
 
     private final DockerClient _dockerClient;
     private final String _imageName;
@@ -81,7 +83,7 @@ public class DockerComputerLauncher extends ComputerLauncher {
         _dockerClient.startContainer(new StartContainerRequest()
                 .withContainerId(containerId)
                 .withBindings(ImmutableList.<DirectoryBinding>builder()
-                        .add(new DirectoryBinding(JENKINS_HOST_SHARED, JENKINS_CONTAINER_SHARED, DirectoryBinding.Access.READ))
+                        .add(new DirectoryBinding(JENKINS_SHARED_DIR, JENKINS_SHARED_DIR, DirectoryBinding.Access.READ))
                         .addAll(_directoryBindings)
                         .build()));
 
@@ -140,7 +142,7 @@ public class DockerComputerLauncher extends ComputerLauncher {
         LOG.debug("Creating container: image={0} endpoint={1}", _imageName, _dockerClient);
 
         List<ContainerVolume> volumes = newArrayListWithCapacity(_directoryBindings.size() + 1);
-        volumes.add(new ContainerVolume(JENKINS_CONTAINER_SHARED));
+        volumes.add(new ContainerVolume(JENKINS_SHARED_DIR));
 
         for (DirectoryBinding binding : _directoryBindings) {
             volumes.add(new ContainerVolume(binding.getContainerPath()));

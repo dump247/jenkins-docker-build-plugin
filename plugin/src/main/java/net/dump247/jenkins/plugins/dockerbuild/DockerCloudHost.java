@@ -90,7 +90,7 @@ public class DockerCloudHost {
             DockerSlave slave = new DockerSlave(
                     format("%s (%s)", imageName, RandomStringUtils.randomAlphanumeric(6).toLowerCase()),
                     "Running job on image " + imageName,
-                    DockerComputerLauncher.JENKINS_CONTAINER_HOME,
+                    DockerComputerLauncher.JENKINS_SHARED_DIR,
                     labels,
                     new DockerComputerLauncher(_dockerClient, imageName, directoryBindings)
             );
