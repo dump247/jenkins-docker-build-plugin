@@ -7,7 +7,6 @@ import com.cloudbees.plugins.credentials.common.StandardCredentials;
 import com.cloudbees.plugins.credentials.common.StandardListBoxModel;
 import com.cloudbees.plugins.credentials.common.StandardUsernamePasswordCredentials;
 import com.cloudbees.plugins.credentials.domains.SchemeRequirement;
-import com.google.common.base.Optional;
 import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -87,7 +86,9 @@ public abstract class DockerCloud extends Cloud {
     public final String directoryMappingsString;
     private transient List<DirectoryBinding> _directoryMappings;
 
-    protected DockerCloud(String name, final int dockerPort, final String labelString, final int maxExecutors, final boolean tlsEnabled, final String credentialsId, final String directoryMappingsString) {
+    public final boolean allowCustomImages;
+
+    protected DockerCloud(String name, final int dockerPort, final String labelString, final int maxExecutors, final boolean tlsEnabled, final String credentialsId, final String directoryMappingsString, boolean allowCustomImages) {
         super(name);
         this.dockerPort = dockerPort;
         this.labelString = labelString;
@@ -95,6 +96,7 @@ public abstract class DockerCloud extends Cloud {
         this.tlsEnabled = tlsEnabled;
         this.credentialsId = credentialsId;
         this.directoryMappingsString = directoryMappingsString;
+        this.allowCustomImages = allowCustomImages;
     }
 
     public abstract Collection<DockerCloudHost> listHosts();
@@ -115,14 +117,16 @@ public abstract class DockerCloud extends Cloud {
         }
 
         // Discover image names specified in the job restriction label (i.e. docker/IMAGE)
-        for (LabelAtom potentialImage : listPotentialImages(label)) {
-            Set<LabelAtom> cloudImageLabels = ImmutableSet.<LabelAtom>builder()
-                    .add(potentialImage)
-                    .addAll(getLabels())
-                    .build();
+        if (allowCustomImages) {
+            for (LabelAtom potentialImage : listPotentialImages(label)) {
+                Set<LabelAtom> cloudImageLabels = ImmutableSet.<LabelAtom>builder()
+                        .add(potentialImage)
+                        .addAll(getLabels())
+                        .build();
 
-            if (label.matches(cloudImageLabels)) {
-                return true;
+                if (label.matches(cloudImageLabels)) {
+                    return true;
+                }
             }
         }
 
@@ -159,14 +163,16 @@ public abstract class DockerCloud extends Cloud {
         }
 
         // Discover image names specified in the job restriction label (i.e. docker/IMAGE)
-        for (LabelAtom potentialImage : listPotentialImages(job.assignedLabel)) {
-            Set<LabelAtom> cloudImageLabels = ImmutableSet.<LabelAtom>builder()
-                    .add(potentialImage)
-                    .addAll(getLabels())
-                    .build();
+        if (allowCustomImages) {
+            for (LabelAtom potentialImage : listPotentialImages(job.assignedLabel)) {
+                Set<LabelAtom> cloudImageLabels = ImmutableSet.<LabelAtom>builder()
+                        .add(potentialImage)
+                        .addAll(getLabels())
+                        .build();
 
-            if (job.assignedLabel.matches(cloudImageLabels)) {
-                return provisionJob(extractImageName(potentialImage), cloudImageLabels);
+                if (job.assignedLabel.matches(cloudImageLabels)) {
+                    return provisionJob(extractImageName(potentialImage), cloudImageLabels);
+                }
             }
         }
 

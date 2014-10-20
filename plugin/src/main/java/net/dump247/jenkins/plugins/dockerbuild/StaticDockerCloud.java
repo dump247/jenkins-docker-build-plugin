@@ -18,8 +18,8 @@ public class StaticDockerCloud extends DockerCloud {
     private transient List<DockerCloudHost> _hosts;
 
     @DataBoundConstructor
-    public StaticDockerCloud(String name, final String hostString, final int dockerPort, final String labelString, final int maxExecutors, final boolean tlsEnabled, final String credentialsId, final String directoryMappingsString) {
-        super(name, dockerPort, labelString, maxExecutors, tlsEnabled, credentialsId, directoryMappingsString);
+    public StaticDockerCloud(String name, final String hostString, final int dockerPort, final String labelString, final int maxExecutors, final boolean tlsEnabled, final String credentialsId, final String directoryMappingsString, boolean allowCustomImages) {
+        super(name, dockerPort, labelString, maxExecutors, tlsEnabled, credentialsId, directoryMappingsString, allowCustomImages);
 
         this.hostString = hostString;
 

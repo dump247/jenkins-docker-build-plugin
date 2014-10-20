@@ -17,6 +17,10 @@
         <f:textbox/>
     </f:entry>
 
+    <f:entry title="Allow Custom Images" field="allowCustomImages">
+        <f:checkbox/>
+    </f:entry>
+
     <f:entry title="Max Concurrent Jobs" field="maxExecutors"
              description="Maximum number of jobs to run simultaneously on a host">
         <f:number default="1"/>

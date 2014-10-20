@@ -38,8 +38,8 @@ public class AutoScalingDockerCloud extends DockerCloud {
     private transient AmazonEC2 _amazonEC2;
 
     @DataBoundConstructor
-    public AutoScalingDockerCloud(String name, final String asgString, final int dockerPort, final String labelString, final int maxExecutors, final boolean tlsEnabled, final String credentialsId, final String directoryMappingsString) {
-        super(name, dockerPort, labelString, maxExecutors, tlsEnabled, credentialsId, directoryMappingsString);
+    public AutoScalingDockerCloud(String name, final String asgString, final int dockerPort, final String labelString, final int maxExecutors, final boolean tlsEnabled, final String credentialsId, final String directoryMappingsString, boolean allowCustomImages) {
+        super(name, dockerPort, labelString, maxExecutors, tlsEnabled, credentialsId, directoryMappingsString, allowCustomImages);
 
         this.asgString = asgString;
 
