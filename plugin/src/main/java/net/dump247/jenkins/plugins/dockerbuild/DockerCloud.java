@@ -7,10 +7,12 @@ import com.cloudbees.plugins.credentials.common.StandardCredentials;
 import com.cloudbees.plugins.credentials.common.StandardListBoxModel;
 import com.cloudbees.plugins.credentials.common.StandardUsernamePasswordCredentials;
 import com.cloudbees.plugins.credentials.domains.SchemeRequirement;
+import com.google.common.base.Predicate;
 import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Iterables;
 import hudson.model.Item;
 import hudson.model.Label;
 import hudson.model.labels.LabelAtom;
@@ -26,6 +28,7 @@ import net.dump247.docker.DockerClient;
 import net.dump247.jenkins.plugins.dockerbuild.log.Logger;
 import org.kohsuke.stapler.QueryParameter;
 
+import javax.annotation.Nullable;
 import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
@@ -47,6 +50,7 @@ import java.util.Set;
 
 import static com.google.common.base.Strings.isNullOrEmpty;
 import static com.google.common.base.Strings.nullToEmpty;
+import static com.google.common.collect.Lists.newArrayList;
 import static com.google.common.collect.Lists.newArrayListWithCapacity;
 import static java.lang.String.format;
 import static java.util.Collections.unmodifiableSet;
@@ -412,37 +416,18 @@ public abstract class DockerCloud extends Cloud {
         return imageLabel.toString().substring(IMAGE_LABEL_PREFIX.length());
     }
 
-    public List<LabelAtom> listPotentialImages(Label jobLabel) {
-        return discoverPotentialImages(jobLabel, ImmutableList.<LabelAtom>builder()).build();
-    }
-
-    public ImmutableList.Builder<LabelAtom> discoverPotentialImages(Label jobLabel, ImmutableList.Builder<LabelAtom> results) {
-        if (jobLabel == null) {
-            return results;
-        }
-
-        if (jobLabel instanceof LabelAtom) {
-            LabelAtom imageLabel = (LabelAtom) jobLabel;
-            String labelStr = imageLabel.toString();
-
-            if (labelStr.startsWith(IMAGE_LABEL_PREFIX) && labelStr.length() > IMAGE_LABEL_PREFIX.length()) {
-                results.add((LabelAtom) jobLabel);
-            }
-
-            return results;
-        }
-
-        for (Field field : jobLabel.getClass().getFields()) {
-            if (Label.class.isAssignableFrom(field.getType())) {
-                try {
-                    discoverPotentialImages((Label) field.get(jobLabel), results);
-                } catch (IllegalAccessException e) {
-                    LOG.warn("Error attempting to get value of label field: name={0} type={1}", field.getName(), jobLabel.getClass());
+    public Iterable<LabelAtom> listPotentialImages(Label jobLabel) {
+        return Iterables.filter(jobLabel.listAtoms(), new Predicate<LabelAtom>() {
+            @Override
+            public boolean apply(@Nullable LabelAtom input) {
+                if (input == null) {
+                    return false;
                 }
-            }
-        }
 
-        return results;
+                String atomStr = input.toString();
+                return atomStr.startsWith(IMAGE_LABEL_PREFIX) && atomStr.length() > IMAGE_LABEL_PREFIX.length();
+            }
+        });
     }
 
     private static final HostnameVerifier ALLOW_ALL_HOSTNAMES = new HostnameVerifier() {
