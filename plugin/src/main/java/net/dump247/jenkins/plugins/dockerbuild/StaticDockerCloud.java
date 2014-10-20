@@ -18,8 +18,8 @@ public class StaticDockerCloud extends DockerCloud {
     private transient List<DockerCloudHost> _hosts;
 
     @DataBoundConstructor
-    public StaticDockerCloud(final String hostString, final int dockerPort, final String labelString, final int maxExecutors, final boolean tlsEnabled, final String credentialsId, final String directoryMappingsString) {
-        super(dockerPort, labelString, maxExecutors, tlsEnabled, credentialsId, directoryMappingsString);
+    public StaticDockerCloud(String name, final String hostString, final int dockerPort, final String labelString, final int maxExecutors, final boolean tlsEnabled, final String credentialsId, final String directoryMappingsString) {
+        super(name, dockerPort, labelString, maxExecutors, tlsEnabled, credentialsId, directoryMappingsString);
 
         this.hostString = hostString;
 
@@ -48,7 +48,7 @@ public class StaticDockerCloud extends DockerCloud {
     public static final class Descriptor extends DockerCloud.Descriptor {
         @Override
         public String getDisplayName() {
-            return "Static Hosts";
+            return "Docker Host";
         }
     }
 }

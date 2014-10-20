@@ -3,7 +3,6 @@ package net.dump247.jenkins.plugins.dockerbuild;
 import com.google.common.collect.ImmutableList;
 import hudson.Extension;
 import jenkins.model.GlobalConfiguration;
-import jenkins.model.Jenkins;
 import net.sf.json.JSONObject;
 import org.kohsuke.stapler.StaplerRequest;
 
@@ -12,7 +11,7 @@ import java.util.List;
 import static com.google.common.base.Preconditions.checkNotNull;
 
 /**
- * Configuration options for the plugin.
+ * Global configuration options for the plugin.
  * <p/>
  * The UI for this configuration is defined in <code>resources/FULL/CLASS/NAME/config.jelly</code>.
  * The configuration shows up in the jenkins server settings page.
@@ -20,7 +19,7 @@ import static com.google.common.base.Preconditions.checkNotNull;
 @Extension
 public class DockerGlobalConfiguration extends GlobalConfiguration {
     private List<LabeledDockerImage> _labeledImages = ImmutableList.of();
-    private List<DockerCloud> _clouds = ImmutableList.of();
+//    private List<DockerCloud> _clouds = ImmutableList.of();
 
     public DockerGlobalConfiguration() {
         // Classes deriving from GlobalConfiguration must call load() in their constructor
@@ -50,18 +49,5 @@ public class DockerGlobalConfiguration extends GlobalConfiguration {
     public void setLabeledImages(final List<LabeledDockerImage> labeledImages) {
         checkNotNull(labeledImages);
         _labeledImages = ImmutableList.copyOf(labeledImages);
-    }
-
-    public List<DockerCloud> getClouds() {
-        return _clouds;
-    }
-
-    public void setClouds(final List<DockerCloud> clouds) {
-        checkNotNull(clouds);
-        _clouds = ImmutableList.copyOf(clouds);
-    }
-
-    public List<DockerCloud.Descriptor> getCloudDescriptors() {
-        return Jenkins.getInstance().getDescriptorList(DockerCloud.class);
     }
 }

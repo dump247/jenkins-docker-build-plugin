@@ -11,12 +11,15 @@ import com.google.common.base.Optional;
 import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
-import hudson.model.AbstractDescribableImpl;
 import hudson.model.Item;
 import hudson.model.Label;
 import hudson.model.labels.LabelAtom;
+import hudson.model.queue.MappingWorksheet;
 import hudson.security.ACL;
+import hudson.slaves.Cloud;
+import hudson.slaves.NodeProvisioner;
 import hudson.util.FormValidation;
 import hudson.util.ListBoxModel;
 import jenkins.model.Jenkins;
@@ -30,6 +33,7 @@ import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLSession;
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.net.URI;
 import java.security.KeyManagementException;
 import java.security.KeyStoreException;
@@ -45,14 +49,26 @@ import java.util.Set;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Strings.isNullOrEmpty;
+import static com.google.common.base.Strings.nullToEmpty;
 import static com.google.common.collect.Lists.newArrayListWithCapacity;
 import static java.lang.String.format;
 import static java.util.Collections.unmodifiableSet;
 
 /**
  * Cloud of docker servers to run jenkins jobs on.
+ * <p/>
+ * This cloud implementation differs from the normal implementation in that it does not directly
+ * provision jenkins nodes. To ensure that a specific job gets mapped to a specific slave, the
+ * actual provisioning is done in {@link DockerLoadBalancer}. This cloud implementation serves
+ * several important purposes:
+ * <ul>
+ *     <li>Ensure the "Restrict where this project can be run" option is visible in job configuration</li>
+ *     <li>Validate that the value in "Restrict..." is valid</li>
+ *     <li>Makes the plugin fit into the standard jenkins configuration section (under Cloud in system settings)</li>
+ * </ul>
  */
-public abstract class DockerCloud extends AbstractDescribableImpl<DockerCloud> {
+public abstract class DockerCloud extends Cloud {
+    private static final String IMAGE_LABEL_PREFIX = "docker/";
     private static final Logger LOG = Logger.get(DockerCloud.class);
     private static final SchemeRequirement HTTPS_SCHEME = new SchemeRequirement("https");
     private static final Map<String, DirectoryBinding.Access> BINDING_ACCESS = ImmutableMap.of(
@@ -73,7 +89,8 @@ public abstract class DockerCloud extends AbstractDescribableImpl<DockerCloud> {
     public final String directoryMappingsString;
     private transient List<DirectoryBinding> _directoryMappings;
 
-    protected DockerCloud(final int dockerPort, final String labelString, final int maxExecutors, final boolean tlsEnabled, final String credentialsId, final String directoryMappingsString) {
+    protected DockerCloud(String name, final int dockerPort, final String labelString, final int maxExecutors, final boolean tlsEnabled, final String credentialsId, final String directoryMappingsString) {
+        super(name);
         this.dockerPort = dockerPort;
         this.labelString = labelString;
         this.maxExecutors = maxExecutors;
@@ -88,6 +105,47 @@ public abstract class DockerCloud extends AbstractDescribableImpl<DockerCloud> {
         return _labels;
     }
 
+    @Override
+    public Collection<NodeProvisioner.PlannedNode> provision(Label label, int excessWorkload) {
+        return ImmutableList.of();
+    }
+
+    @Override
+    public boolean canProvision(Label label) {
+        if (label == null) {
+            return false;
+        }
+
+        // Discover image names specified in the job restriction label (i.e. docker/IMAGE)
+        for (LabelAtom potentialImage : listPotentialImages(label)) {
+            Set<LabelAtom> cloudImageLabels = ImmutableSet.<LabelAtom>builder()
+                    .add(potentialImage)
+                    .addAll(getLabels())
+                    .build();
+
+            if (label.matches(cloudImageLabels)) {
+                return true;
+            }
+        }
+
+        DockerGlobalConfiguration dockerConfig = DockerGlobalConfiguration.get();
+
+        // Discover if the job matches a pre-configured image
+        for (LabeledDockerImage image : dockerConfig.getLabeledImages()) {
+            Set<LabelAtom> cloudImageLabels = ImmutableSet.<LabelAtom>builder()
+                    .add(new LabelAtom(IMAGE_LABEL_PREFIX + image.imageName))
+                    .addAll(image.getLabels())
+                    .addAll(getLabels())
+                    .build();
+
+            if (label.matches(cloudImageLabels)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /**
      * Initialize transient fields after deserialization.
      */
@@ -97,20 +155,46 @@ public abstract class DockerCloud extends AbstractDescribableImpl<DockerCloud> {
         return this;
     }
 
-    public ProvisionResult provisionJob(Optional<Label> jobLabel, String imageName, Set<LabelAtom> imageLabels) {
-        checkNotNull(imageName);
-        checkNotNull(imageLabels);
-
-        Set<LabelAtom> cloudImageLabels = Sets.union(imageLabels, getLabels());
-
-        if (jobLabel.isPresent() && !jobLabel.get().matches(cloudImageLabels)) {
+    public ProvisionResult provisionJob(MappingWorksheet.WorkChunk job) {
+        if (job.assignedLabel == null) {
             return ProvisionResult.notSupported();
         }
 
+        // Discover image names specified in the job restriction label (i.e. docker/IMAGE)
+        for (LabelAtom potentialImage : listPotentialImages(job.assignedLabel)) {
+            Set<LabelAtom> cloudImageLabels = ImmutableSet.<LabelAtom>builder()
+                    .add(potentialImage)
+                    .addAll(getLabels())
+                    .build();
+
+            if (job.assignedLabel.matches(cloudImageLabels)) {
+                return provisionJob(extractImageName(potentialImage), cloudImageLabels);
+            }
+        }
+
+        DockerGlobalConfiguration dockerConfig = DockerGlobalConfiguration.get();
+
+        // Discover if the job matches a pre-configured image
+        for (LabeledDockerImage image : dockerConfig.getLabeledImages()) {
+            Set<LabelAtom> cloudImageLabels = ImmutableSet.<LabelAtom>builder()
+                    .add(new LabelAtom(IMAGE_LABEL_PREFIX + image.imageName))
+                    .addAll(image.getLabels())
+                    .addAll(getLabels())
+                    .build();
+
+            if (job.assignedLabel.matches(cloudImageLabels)) {
+                return provisionJob(image.imageName, cloudImageLabels);
+            }
+        }
+
+        return ProvisionResult.notSupported();
+    }
+
+    private ProvisionResult provisionJob(String imageName, Set<LabelAtom> nodeLabels) {
         for (HostCount host : listAvailableHosts()) {
             try {
                 LOG.info("Provisioning node: host={0} capacity={1}", host.host, host.capacity);
-                return ProvisionResult.provisioned(host.host.provisionSlave(imageName, cloudImageLabels, _directoryMappings));
+                return ProvisionResult.provisioned(host.host.provisionSlave(imageName, nodeLabels, _directoryMappings));
             } catch (IOException ex) {
                 LOG.warn("Error provisioning node: host={0}", host.host, ex);
             }
@@ -249,7 +333,7 @@ public abstract class DockerCloud extends AbstractDescribableImpl<DockerCloud> {
                 : line.trim();
     }
 
-    public static abstract class Descriptor extends hudson.model.Descriptor<DockerCloud> {
+    public static abstract class Descriptor extends hudson.model.Descriptor<Cloud> {
         public ListBoxModel doFillCredentialsIdItems() {
             return new StandardListBoxModel()
                     .withEmptySelection()
@@ -263,6 +347,12 @@ public abstract class DockerCloud extends AbstractDescribableImpl<DockerCloud> {
                                     ACL.SYSTEM,
                                     HTTPS_SCHEME)
                     );
+        }
+
+        public FormValidation doCheckName(@QueryParameter String value) {
+            return nullToEmpty(value).trim().length() == 0
+                    ? FormValidation.error("Name is required")
+                    : FormValidation.ok();
         }
 
         public FormValidation doCheckCredentialsId(@QueryParameter String value, @QueryParameter boolean tlsEnabled) {
@@ -306,6 +396,43 @@ public abstract class DockerCloud extends AbstractDescribableImpl<DockerCloud> {
             // Sort from highest to lowest
             return hostCount.capacity - this.capacity;
         }
+    }
+
+    private static String extractImageName(LabelAtom imageLabel) {
+        return imageLabel.toString().substring(IMAGE_LABEL_PREFIX.length());
+    }
+
+    public List<LabelAtom> listPotentialImages(Label jobLabel) {
+        return discoverPotentialImages(jobLabel, ImmutableList.<LabelAtom>builder()).build();
+    }
+
+    public ImmutableList.Builder<LabelAtom> discoverPotentialImages(Label jobLabel, ImmutableList.Builder<LabelAtom> results) {
+        if (jobLabel == null) {
+            return results;
+        }
+
+        if (jobLabel instanceof LabelAtom) {
+            LabelAtom imageLabel = (LabelAtom) jobLabel;
+            String labelStr = imageLabel.toString();
+
+            if (labelStr.startsWith(IMAGE_LABEL_PREFIX) && labelStr.length() > IMAGE_LABEL_PREFIX.length()) {
+                results.add((LabelAtom) jobLabel);
+            }
+
+            return results;
+        }
+
+        for (Field field : jobLabel.getClass().getFields()) {
+            if (Label.class.isAssignableFrom(field.getType())) {
+                try {
+                    discoverPotentialImages((Label) field.get(jobLabel), results);
+                } catch (IllegalAccessException e) {
+                    LOG.warn("Error attempting to get value of label field: name={0} type={1}", field.getName(), jobLabel.getClass());
+                }
+            }
+        }
+
+        return results;
     }
 
     private static final HostnameVerifier ALLOW_ALL_HOSTNAMES = new HostnameVerifier() {

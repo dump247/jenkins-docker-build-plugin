@@ -1,11 +1,9 @@
 package net.dump247.jenkins.plugins.dockerbuild;
 
 import com.google.common.base.Optional;
-import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
 import hudson.model.Computer;
-import hudson.model.Label;
 import hudson.model.LoadBalancer;
 import hudson.model.Queue;
 import hudson.model.labels.LabelAtom;
@@ -13,10 +11,10 @@ import hudson.model.queue.MappingWorksheet;
 import hudson.model.queue.MappingWorksheet.ExecutorChunk;
 import hudson.model.queue.MappingWorksheet.Mapping;
 import hudson.model.queue.MappingWorksheet.WorkChunk;
+import hudson.slaves.Cloud;
+import jenkins.model.Jenkins;
 import net.dump247.jenkins.plugins.dockerbuild.log.Logger;
 
-import java.lang.reflect.Field;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -134,90 +132,18 @@ public class DockerLoadBalancer extends LoadBalancer {
     }
 
     public ProvisionResult provisionSlave(DockerGlobalConfiguration configuration, WorkChunk workChunk) {
-        boolean isSupported = false;
+        for (Cloud cloud : Jenkins.getInstance().clouds) {
+            if (cloud instanceof DockerCloud) {
+                DockerCloud dockerCloud = (DockerCloud) cloud;
+                ProvisionResult provisionResult = dockerCloud.provisionJob(workChunk);
 
-        for (LabelAtom potentialImage : listPotentialImages(workChunk.assignedLabel)) {
-            Set<LabelAtom> imageLabels = ImmutableSet.of(potentialImage);
-            ProvisionResult provisionResult = provisionSlaveInCloud(configuration.getClouds(), extractImageName(potentialImage), workChunk, imageLabels);
-
-            if (provisionResult.isProvisioned()) {
-                return provisionResult;
-            } else if (provisionResult.isSupported()) {
-                isSupported = true;
-            }
-        }
-
-        if (!isSupported) {
-            for (LabeledDockerImage image : configuration.getLabeledImages()) {
-                Set<LabelAtom> imageLabels = Sets.union(image.getLabels(), ImmutableSet.of(new LabelAtom(IMAGE_LABEL_PREFIX + image.imageName)));
-                ProvisionResult provisionResult = provisionSlaveInCloud(configuration.getClouds(), image.imageName, workChunk, imageLabels);
-
-                if (provisionResult.isProvisioned()) {
+                if (provisionResult.isSupported()) {
                     return provisionResult;
-                } else if (provisionResult.isSupported()) {
-                    isSupported = true;
                 }
             }
         }
 
-        return isSupported
-                ? ProvisionResult.noCapacity()
-                : ProvisionResult.notSupported();
-    }
-
-    private String extractImageName(LabelAtom imageLabel) {
-        return imageLabel.toString().substring(IMAGE_LABEL_PREFIX.length());
-    }
-
-    public List<LabelAtom> listPotentialImages(Label jobLabel) {
-        return discoverPotentialImages(jobLabel, ImmutableList.<LabelAtom>builder()).build();
-    }
-
-    public ImmutableList.Builder<LabelAtom> discoverPotentialImages(Label jobLabel, ImmutableList.Builder<LabelAtom> results) {
-        if (jobLabel == null) {
-            return results;
-        }
-
-        if (jobLabel instanceof LabelAtom) {
-            LabelAtom imageLabel = (LabelAtom) jobLabel;
-            String labelStr = imageLabel.toString();
-
-            if (labelStr.startsWith(IMAGE_LABEL_PREFIX) && labelStr.length() > IMAGE_LABEL_PREFIX.length()) {
-                results.add((LabelAtom) jobLabel);
-            }
-
-            return results;
-        }
-
-        for (Field field : jobLabel.getClass().getFields()) {
-            if (Label.class.isAssignableFrom(field.getType())) {
-                try {
-                    discoverPotentialImages((Label) field.get(jobLabel), results);
-                } catch (IllegalAccessException e) {
-                    LOG.warn("Error attempting to get value of label field: name={0} type={1}", field.getName(), jobLabel.getClass());
-                }
-            }
-        }
-
-        return results;
-    }
-
-    private ProvisionResult provisionSlaveInCloud(Iterable<DockerCloud> clouds, String imageName, WorkChunk workChunk, Set<LabelAtom> imageLabels) {
-        boolean isSupported = false;
-
-        for (DockerCloud cloud : clouds) {
-            ProvisionResult provisionResult = cloud.provisionJob(Optional.fromNullable(workChunk.assignedLabel), imageName, imageLabels);
-
-            if (provisionResult.isProvisioned()) {
-                return provisionResult;
-            } else if (provisionResult.isSupported()) {
-                isSupported = true;
-            }
-        }
-
-        return isSupported
-                ? ProvisionResult.noCapacity()
-                : ProvisionResult.notSupported();
+        return ProvisionResult.notSupported();
     }
 
     private static final class WorkSlave {
