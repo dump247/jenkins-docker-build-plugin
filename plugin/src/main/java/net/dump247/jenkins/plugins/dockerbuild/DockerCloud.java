@@ -7,12 +7,10 @@ import com.cloudbees.plugins.credentials.common.StandardCredentials;
 import com.cloudbees.plugins.credentials.common.StandardListBoxModel;
 import com.cloudbees.plugins.credentials.common.StandardUsernamePasswordCredentials;
 import com.cloudbees.plugins.credentials.domains.SchemeRequirement;
-import com.google.common.base.Optional;
 import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Sets;
 import hudson.model.Item;
 import hudson.model.Label;
 import hudson.model.labels.LabelAtom;
@@ -47,7 +45,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Strings.isNullOrEmpty;
 import static com.google.common.base.Strings.nullToEmpty;
 import static com.google.common.collect.Lists.newArrayListWithCapacity;
@@ -62,9 +59,9 @@ import static java.util.Collections.unmodifiableSet;
  * actual provisioning is done in {@link DockerLoadBalancer}. This cloud implementation serves
  * several important purposes:
  * <ul>
- *     <li>Ensure the "Restrict where this project can be run" option is visible in job configuration</li>
- *     <li>Validate that the value in "Restrict..." is valid</li>
- *     <li>Makes the plugin fit into the standard jenkins configuration section (under Cloud in system settings)</li>
+ * <li>Ensure the "Restrict where this project can be run" option is visible in job configuration</li>
+ * <li>Validate that the value in "Restrict..." is valid</li>
+ * <li>Makes the plugin fit into the standard jenkins configuration section (under Cloud in system settings)</li>
  * </ul>
  */
 public abstract class DockerCloud extends Cloud {
@@ -212,10 +209,16 @@ public abstract class DockerCloud extends Cloud {
         ArrayList<HostCount> availableHosts = newArrayListWithCapacity(allHosts.size());
 
         for (DockerCloudHost host : allHosts) {
-            int count = host.countRunningJobs();
+            try {
+                host.status(); // Query for status to check if host is available and ready
 
-            if (count < this.maxExecutors) {
-                availableHosts.add(new HostCount(host, this.maxExecutors - count));
+                int count = host.countRunningJobs();
+
+                if (count < this.maxExecutors) {
+                    availableHosts.add(new HostCount(host, this.maxExecutors - count));
+                }
+            } catch (Exception ex) {
+                LOG.warn("Error getting status from docker host {0}", host, ex);
             }
         }
 

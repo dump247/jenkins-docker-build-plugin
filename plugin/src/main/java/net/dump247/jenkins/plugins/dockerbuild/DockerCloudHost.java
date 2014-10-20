@@ -1,5 +1,7 @@
 package net.dump247.jenkins.plugins.dockerbuild;
 
+import com.google.common.base.Throwables;
+import com.google.common.collect.ImmutableMap;
 import hudson.model.Computer;
 import hudson.model.Descriptor;
 import hudson.model.Node;
@@ -7,12 +9,14 @@ import hudson.model.labels.LabelAtom;
 import jenkins.model.Jenkins;
 import net.dump247.docker.DirectoryBinding;
 import net.dump247.docker.DockerClient;
-import net.dump247.jenkins.plugins.dockerbuild.log.Logger;
+import net.dump247.docker.DockerException;
+import net.dump247.docker.DockerVersionResponse;
 import org.apache.commons.lang.RandomStringUtils;
 
 import java.io.IOException;
 import java.net.URI;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import static com.google.common.base.Preconditions.checkNotNull;
@@ -35,6 +39,28 @@ public class DockerCloudHost {
     @Override
     public String toString() {
         return _dockerClient.getEndpoint().toString();
+    }
+
+    public Map<String, Object> status() {
+        try {
+            DockerVersionResponse version = _dockerClient.version();
+
+            return ImmutableMap.<String, Object>builder()
+                    .put("docker", ImmutableMap.of(
+                            "version", version.getVersion(),
+                            "commit", version.getGitCommit(),
+                            "api", version.getApiVersion(),
+                            "go", version.getGoVersion()
+                    ))
+                    .put("os", ImmutableMap.of(
+                            "arch", version.getArch(),
+                            "name", version.getOs(),
+                            "kernel", version.getKernelVersion()
+                    ))
+                    .build();
+        } catch (DockerException ex) {
+            throw Throwables.propagate(ex);
+        }
     }
 
     public int countRunningJobs() {

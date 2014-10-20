@@ -3,7 +3,9 @@ package net.dump247.docker;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-/** Docker version information. */
+/**
+ * Docker version information.
+ */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class DockerVersionResponse {
     private String _dockerVersion;
@@ -12,6 +14,7 @@ public class DockerVersionResponse {
     private String _arch;
     private String _kernelVersion;
     private String _os;
+    private String _apiVersion;
 
     public String getVersion() {
         return _dockerVersion;
@@ -65,6 +68,15 @@ public class DockerVersionResponse {
     @JsonProperty("Os")
     public void setOs(final String os) {
         _os = os;
+    }
+
+    public String getApiVersion() {
+        return _apiVersion;
+    }
+
+    @JsonProperty("ApiVersion")
+    public void setApiVersion(String apiVersion) {
+        _apiVersion = apiVersion;
     }
 
     @Override
