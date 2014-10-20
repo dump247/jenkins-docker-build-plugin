@@ -7,6 +7,7 @@ import com.cloudbees.plugins.credentials.common.StandardCredentials;
 import com.cloudbees.plugins.credentials.common.StandardListBoxModel;
 import com.cloudbees.plugins.credentials.common.StandardUsernamePasswordCredentials;
 import com.cloudbees.plugins.credentials.domains.SchemeRequirement;
+import com.google.common.base.Optional;
 import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -135,7 +136,7 @@ public abstract class DockerCloud extends Cloud {
                     .addAll(getLabels())
                     .build();
 
-            if (label.matches(cloudImageLabels)) {
+            if (image.concatCondition(label).matches(cloudImageLabels)) {
                 return true;
             }
         }
@@ -179,7 +180,7 @@ public abstract class DockerCloud extends Cloud {
                     .addAll(getLabels())
                     .build();
 
-            if (job.assignedLabel.matches(cloudImageLabels)) {
+            if (image.concatCondition(job.assignedLabel).matches(cloudImageLabels)) {
                 return provisionJob(image.imageName, cloudImageLabels);
             }
         }

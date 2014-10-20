@@ -12,6 +12,10 @@
                         <f:textbox/>
                     </f:entry>
 
+                    <f:entry title="Condition" field="conditionString">
+                        <f:textbox/>
+                    </f:entry>
+
                     <f:entry title="">
                         <div align="right">
                             <f:repeatableDeleteButton/>
