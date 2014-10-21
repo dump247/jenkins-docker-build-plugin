@@ -139,7 +139,6 @@ public abstract class DockerCloud extends Cloud {
         // Discover if the job matches a pre-configured image
         for (LabeledDockerImage image : dockerConfig.getLabeledImages()) {
             Set<LabelAtom> cloudImageLabels = ImmutableSet.<LabelAtom>builder()
-                    .add(new LabelAtom(IMAGE_LABEL_PREFIX + image.imageName))
                     .addAll(image.getLabels())
                     .addAll(getLabels())
                     .build();
@@ -184,14 +183,12 @@ public abstract class DockerCloud extends Cloud {
 
         // Discover if the job matches a pre-configured image
         for (LabeledDockerImage image : dockerConfig.getLabeledImages()) {
-            Set<LabelAtom> cloudImageLabels = ImmutableSet.<LabelAtom>builder()
-                    .add(new LabelAtom(IMAGE_LABEL_PREFIX + image.imageName))
+            ImmutableSet.Builder<LabelAtom> cloudImageLabels = ImmutableSet.<LabelAtom>builder()
                     .addAll(image.getLabels())
-                    .addAll(getLabels())
-                    .build();
+                    .addAll(getLabels());
 
-            if (image.concatCondition(job.assignedLabel).matches(cloudImageLabels)) {
-                return provisionJob(image.imageName, cloudImageLabels);
+            if (image.concatCondition(job.assignedLabel).matches(cloudImageLabels.build())) {
+                return provisionJob(image.imageName, cloudImageLabels.add(new LabelAtom(IMAGE_LABEL_PREFIX + image.imageName)).build());
             }
         }
 
