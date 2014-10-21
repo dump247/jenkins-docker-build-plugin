@@ -45,6 +45,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -52,6 +53,7 @@ import static com.google.common.base.Strings.isNullOrEmpty;
 import static com.google.common.base.Strings.nullToEmpty;
 import static com.google.common.collect.Lists.newArrayList;
 import static com.google.common.collect.Lists.newArrayListWithCapacity;
+import static com.google.common.collect.Sets.newHashSet;
 import static java.lang.String.format;
 import static java.util.Collections.unmodifiableSet;
 
@@ -287,6 +289,7 @@ public abstract class DockerCloud extends Cloud {
     private static List<DirectoryBinding> parseBindings(String bindingsString) {
         ImmutableList.Builder<DirectoryBinding> directoryBindings = ImmutableList.builder();
         int lineNum = 0;
+        Set<String> containerDirs = newHashSet();
 
         if (!isNullOrEmpty(bindingsString)) {
             for (String line : bindingsString.split("[\r\n]+")) {
@@ -302,7 +305,7 @@ public abstract class DockerCloud extends Cloud {
 
                     String hostDir = parts[0].trim();
                     String containerDir = parts.length > 1 ? parts[1].trim() : null;
-                    String accessStr = parts.length > 2 ? parts[2].trim().toLowerCase() : null;
+                    String accessStr = parts.length > 2 ? parts[2].trim().toLowerCase(Locale.US) : null;
                     DirectoryBinding.Access bindingAccess;
 
                     if (accessStr != null) {
@@ -312,7 +315,7 @@ public abstract class DockerCloud extends Cloud {
                             throw new IllegalArgumentException(format("Invalid directory mapping, unsupported access statement, use r or rw (line %d): %s", lineNum, line));
                         }
                     } else if (containerDir != null) {
-                        bindingAccess = BINDING_ACCESS.get(containerDir.toLowerCase());
+                        bindingAccess = BINDING_ACCESS.get(containerDir.toLowerCase(Locale.US));
 
                         if (bindingAccess == null) {
                             bindingAccess = DirectoryBinding.Access.READ;
@@ -326,6 +329,17 @@ public abstract class DockerCloud extends Cloud {
 
                     if (!hostDir.startsWith("/") || !containerDir.startsWith("/")) {
                         throw new IllegalArgumentException(format("Invalid directory mapping, use absolute paths (line %d): %s", lineNum, line));
+                    }
+
+                    // Remove any suffix slashes from paths
+                    hostDir = hostDir.replaceFirst("/+$", "");
+                    containerDir = containerDir.replaceFirst("/+$", "");
+
+                    // Check that container dir paths do not overlap
+                    for (String otherContainerDir : containerDirs) {
+                        if (containerDir.startsWith(otherContainerDir) || otherContainerDir.startsWith(containerDir)) {
+                            throw new IllegalArgumentException(format("Container directories can not overlap (line %d): %s, %s", lineNum, line, otherContainerDir));
+                        }
                     }
 
                     directoryBindings.add(new DirectoryBinding(hostDir, containerDir, bindingAccess));
