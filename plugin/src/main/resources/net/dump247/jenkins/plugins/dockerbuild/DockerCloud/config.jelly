@@ -39,4 +39,11 @@
         <f:textarea/>
     </f:entry>
 
+    <f:advanced>
+        <f:entry title="Slave Jar Path" field="slaveJarPath"
+                 description="Location of the Jenkins slave jar in the container">
+            <f:textbox/>
+        </f:entry>
+    </f:advanced>
+
 </j:jelly>

@@ -1,0 +1,38 @@
+<p>
+    Path to the slave jar in the job container. If not specified, the slave jar is downloaded each
+    time a job starts. It can help improve job startup time to store the slave jar on the host and
+    map it into each container.
+</p>
+
+<p>
+    To properly set it up:
+<ol>
+    <li>
+        Create a cron job on the host that regularly downloads the slave jar
+        <ul>
+            <li>For example, to <code>/var/lib/jenkins/slave.jar</code>, but you can place it
+                anywhere
+            </li>
+            <li>The slave jar URL is <a href="/jnlpJars/slave.jar">http://JENKINS_HOST/jnlpJars/slave.jar</a>
+            </li>
+            <li>No authentication should be required to get the jar</li>
+            <li>Make sure to retrieve the slave jar immediately to get an initial local copy</li>
+            <li>An example script can be found at <a
+                    href="https://github.com/dump247/jenkins-docker-build-plugin/blob/master/deploy/sync_agent">github.com/dump247/jenkins-docker-build-plugin/blob/master/deploy/sync_agent</a>
+            </li>
+        </ul>
+    </li>
+    <li>
+        Add the directory that contains the slave jar in the directory mappings section
+        <ul>
+            <li><code>/var/lib/jenkins</code></li>
+        </ul>
+    </li>
+    <li>
+        Set this option to the path to the slave jar in the container
+        <ul>
+            <li><code>/var/lib/jenkins/slave.jar</code></li>
+        </ul>
+    </li>
+</ol>
+</p>

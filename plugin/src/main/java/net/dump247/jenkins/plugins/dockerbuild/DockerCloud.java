@@ -7,6 +7,7 @@ import com.cloudbees.plugins.credentials.common.StandardCredentials;
 import com.cloudbees.plugins.credentials.common.StandardListBoxModel;
 import com.cloudbees.plugins.credentials.common.StandardUsernamePasswordCredentials;
 import com.cloudbees.plugins.credentials.domains.SchemeRequirement;
+import com.google.common.base.Optional;
 import com.google.common.base.Predicate;
 import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
@@ -34,7 +35,6 @@ import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLSession;
 import java.io.IOException;
-import java.lang.reflect.Field;
 import java.net.URI;
 import java.security.KeyManagementException;
 import java.security.KeyStoreException;
@@ -49,9 +49,9 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
+import static com.google.common.base.Strings.emptyToNull;
 import static com.google.common.base.Strings.isNullOrEmpty;
 import static com.google.common.base.Strings.nullToEmpty;
-import static com.google.common.collect.Lists.newArrayList;
 import static com.google.common.collect.Lists.newArrayListWithCapacity;
 import static com.google.common.collect.Sets.newHashSet;
 import static java.lang.String.format;
@@ -94,7 +94,9 @@ public abstract class DockerCloud extends Cloud {
 
     public final boolean allowCustomImages;
 
-    protected DockerCloud(String name, final int dockerPort, final String labelString, final int maxExecutors, final boolean tlsEnabled, final String credentialsId, final String directoryMappingsString, boolean allowCustomImages) {
+    public final String slaveJarPath;
+
+    protected DockerCloud(String name, final int dockerPort, final String labelString, final int maxExecutors, final boolean tlsEnabled, final String credentialsId, final String directoryMappingsString, boolean allowCustomImages, String slaveJarPath) {
         super(name);
         this.dockerPort = dockerPort;
         this.labelString = labelString;
@@ -103,6 +105,7 @@ public abstract class DockerCloud extends Cloud {
         this.credentialsId = credentialsId;
         this.directoryMappingsString = directoryMappingsString;
         this.allowCustomImages = allowCustomImages;
+        this.slaveJarPath = emptyToNull(nullToEmpty(slaveJarPath).trim());
     }
 
     public abstract Collection<DockerCloudHost> listHosts();
@@ -201,7 +204,11 @@ public abstract class DockerCloud extends Cloud {
         for (HostCount host : listAvailableHosts()) {
             try {
                 LOG.info("Provisioning node: host={0} capacity={1}", host.host, host.capacity);
-                return ProvisionResult.provisioned(host.host.provisionSlave(imageName, nodeLabels, _directoryMappings));
+                return ProvisionResult.provisioned(host.host.provisionSlave(
+                        imageName,
+                        nodeLabels,
+                        _directoryMappings,
+                        Optional.fromNullable(slaveJarPath)));
             } catch (IOException ex) {
                 LOG.warn("Error provisioning node: host={0}", host.host, ex);
             }
@@ -404,6 +411,13 @@ public abstract class DockerCloud extends Cloud {
         public FormValidation doCheckMaxExecutors(@QueryParameter int value) {
             return value < 1
                     ? FormValidation.error("Invalid limit value. Must be greater than or equal to 1.")
+                    : FormValidation.ok();
+        }
+
+        public FormValidation doCheckSlaveJarPath(@QueryParameter String value) {
+            String result = nullToEmpty(value).trim();
+            return result.length() > 0 && result.charAt(0) != '/'
+                    ? FormValidation.error("Path must be absolute")
                     : FormValidation.ok();
         }
     }

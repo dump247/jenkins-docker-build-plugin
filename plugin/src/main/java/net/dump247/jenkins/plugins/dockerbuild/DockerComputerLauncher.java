@@ -1,5 +1,6 @@
 package net.dump247.jenkins.plugins.dockerbuild;
 
+import com.google.common.base.Optional;
 import com.google.common.collect.ImmutableList;
 import hudson.Extension;
 import hudson.model.TaskListener;
@@ -7,6 +8,7 @@ import hudson.remoting.Channel;
 import hudson.slaves.ComputerLauncher;
 import hudson.slaves.SlaveComputer;
 import hudson.util.StreamCopyThread;
+import jenkins.model.Jenkins;
 import net.dump247.docker.ContainerNotFoundException;
 import net.dump247.docker.ContainerVolume;
 import net.dump247.docker.CreateContainerRequest;
@@ -31,39 +33,49 @@ public class DockerComputerLauncher extends ComputerLauncher {
     private static final Logger LOG = Logger.get(DockerComputerLauncher.class);
 
     /**
-     * Path to directory that is automatically mapped from the host to each container.
-     * Value: {@value}
-     */
-    public static final String JENKINS_SHARED_DIR = "/var/lib/jenkins";
-
-    /**
      * Bash script that launches the slave jar *
      */
     private static final String SLAVE_SCRIPT = "" +
-            "cp -f " + JENKINS_SHARED_DIR + "/slave.jar /tmp/slave.jar\n" +
+            "SLAVE_JAR_PATH=\"%s\"\n" +
+            "SLAVE_JAR_URL=\"%s\"\n" +
             "\n" +
-            "JAVA_HOME=${JDK_HOME:-$JAVA_HOME}\n" +
-            "if [[ -z \"${JAVA_HOME}\" ]]; then\n" +
-            "    JAVA_BIN=`which java`\n" +
+            "if [ -f \"$SLAVE_JAR_PATH\" ]; then\n" +
+            "    cp -f \"$SLAVE_JAR_PATH\" /tmp/slave.jar\n" +
             "else\n" +
-            "    JAVA_BIN=${JAVA_HOME}/bin/java\n" +
+            "    if which curl; then\n" +
+            "        curl -f --retry 3 -o /tmp/slave.jar \"$SLAVE_JAR_URL\" || exit 1000\n" +
+            "    elif which wget; then\n" +
+            "        wget -O /tmp/slave.jar \"$SLAVE_JAR_URL\" || exit 1000" +
+            "    else\n" +
+            "        echo No local slave jar. Unable to find curl/wget to download slave jar. 1>&2\n" +
+            "        exit 1000\n" +
+            "    fi\n" +
             "fi\n" +
             "\n" +
-            "if [[ -z \"${JAVA_BIN}\" ]]; then\n" +
+            "JAVA_HOME=${JDK_HOME:-$JAVA_HOME}\n" +
+            "if [ -z \"$JAVA_HOME\" ]; then\n" +
+            "    JAVA_BIN=`which java`\n" +
+            "else\n" +
+            "    JAVA_BIN=$JAVA_HOME/bin/java\n" +
+            "fi\n" +
+            "\n" +
+            "if [ -z \"$JAVA_BIN\" ]; then\n" +
             "    echo Unable to find java executable: JDK_HOME, JAVA_HOME, PATH 1>&2\n" +
             "    exit 2000\n" +
             "fi\n" +
             "\n" +
-            "\"${JAVA_BIN}\" -jar /tmp/slave.jar";
+            "\"$JAVA_BIN\" -jar /tmp/slave.jar";
 
     private final DockerClient _dockerClient;
     private final String _imageName;
     private final List<DirectoryBinding> _directoryBindings;
+    private final Optional<String> _slaveJarPath;
 
-    public DockerComputerLauncher(DockerClient dockerClient, String imageName, List<DirectoryBinding> directoryBindings) {
+    public DockerComputerLauncher(DockerClient dockerClient, String imageName, List<DirectoryBinding> directoryBindings, Optional<String> slaveJarPath) {
         _dockerClient = dockerClient;
         _imageName = imageName;
         _directoryBindings = directoryBindings;
+        _slaveJarPath = slaveJarPath;
     }
 
     public DockerClient getDockerClient() {
@@ -82,10 +94,7 @@ public class DockerComputerLauncher extends ComputerLauncher {
         LOG.debug("Starting container: containerId={0}", containerId);
         _dockerClient.startContainer(new StartContainerRequest()
                 .withContainerId(containerId)
-                .withBindings(ImmutableList.<DirectoryBinding>builder()
-                        .add(new DirectoryBinding(JENKINS_SHARED_DIR, JENKINS_SHARED_DIR, DirectoryBinding.Access.READ))
-                        .addAll(_directoryBindings)
-                        .build()));
+                .withBindings(ImmutableList.copyOf(_directoryBindings)));
 
         final StreamCopyThread stderrThread = new StreamCopyThread(containerId + " stderr", streams.stderr, listener.getLogger());
         stderrThread.start();
@@ -141,12 +150,13 @@ public class DockerComputerLauncher extends ComputerLauncher {
     private String createContainer(final TaskListener listener) throws IOException {
         LOG.debug("Creating container: image={0} endpoint={1}", _imageName, _dockerClient);
 
-        List<ContainerVolume> volumes = newArrayListWithCapacity(_directoryBindings.size() + 1);
-        volumes.add(new ContainerVolume(JENKINS_SHARED_DIR));
+        List<ContainerVolume> volumes = newArrayListWithCapacity(_directoryBindings.size());
 
         for (DirectoryBinding binding : _directoryBindings) {
             volumes.add(new ContainerVolume(binding.getContainerPath()));
         }
+
+        String slaveJarUrl = Jenkins.getInstance().getRootUrl() + "/jnlpJars/slave.jar";
 
         CreateContainerResponse response = _dockerClient.createContainer(new CreateContainerRequest()
                 .withImage(_imageName)
@@ -157,7 +167,7 @@ public class DockerComputerLauncher extends ComputerLauncher {
                 .withOpenStdin(true)
                 .withTty(false)
                 .withVolumes(volumes)
-                .withCommand("/bin/bash", "-c", SLAVE_SCRIPT));
+                .withCommand("/bin/bash", "-c", format(SLAVE_SCRIPT, _slaveJarPath.or(""), slaveJarUrl)));
 
         for (String warning : response.getWarnings()) {
             LOG.warn("Warning from docker creating container: image={0}, containerId={1}, message={2}", _imageName, response.getContainerId(), warning);

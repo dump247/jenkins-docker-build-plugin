@@ -1,6 +1,7 @@
 package net.dump247.jenkins.plugins.dockerbuild;
 
 import com.google.common.base.Joiner;
+import com.google.common.base.Optional;
 import hudson.Extension;
 import hudson.model.Computer;
 import hudson.model.Node;

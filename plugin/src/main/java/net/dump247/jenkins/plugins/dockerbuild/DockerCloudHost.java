@@ -1,5 +1,6 @@
 package net.dump247.jenkins.plugins.dockerbuild;
 
+import com.google.common.base.Optional;
 import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableMap;
 import hudson.model.Computer;
@@ -81,7 +82,7 @@ public class DockerCloudHost {
         return count;
     }
 
-    public DockerSlave provisionSlave(String imageName, Set<LabelAtom> labels, List<DirectoryBinding> directoryBindings) throws IOException {
+    public DockerSlave provisionSlave(String imageName, Set<LabelAtom> labels, List<DirectoryBinding> directoryBindings, Optional<String> slaveJarPath) throws IOException {
         checkNotNull(imageName);
         checkNotNull(labels);
         checkNotNull(directoryBindings);
@@ -90,9 +91,9 @@ public class DockerCloudHost {
             DockerSlave slave = new DockerSlave(
                     format("%s (%s)", imageName, RandomStringUtils.randomAlphanumeric(6).toLowerCase()),
                     "Running job on image " + imageName,
-                    DockerComputerLauncher.JENKINS_SHARED_DIR,
+                    "/",
                     labels,
-                    new DockerComputerLauncher(_dockerClient, imageName, directoryBindings)
+                    new DockerComputerLauncher(_dockerClient, imageName, directoryBindings, slaveJarPath)
             );
 
             Jenkins.getInstance().addNode(slave);
