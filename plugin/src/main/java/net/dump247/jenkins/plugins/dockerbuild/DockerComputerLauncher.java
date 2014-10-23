@@ -167,7 +167,7 @@ public class DockerComputerLauncher extends ComputerLauncher {
                 .withOpenStdin(true)
                 .withTty(false)
                 .withVolumes(volumes)
-                .withCommand("/bin/bash", "-c", format(SLAVE_SCRIPT, _slaveJarPath.or(""), slaveJarUrl)));
+                .withCommand("/bin/bash", "-l", "-c", format(SLAVE_SCRIPT, _slaveJarPath.or(""), slaveJarUrl)));
 
         for (String warning : response.getWarnings()) {
             LOG.warn("Warning from docker creating container: image={0}, containerId={1}, message={2}", _imageName, response.getContainerId(), warning);
