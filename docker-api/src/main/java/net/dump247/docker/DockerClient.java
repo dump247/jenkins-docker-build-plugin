@@ -31,6 +31,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static java.lang.String.format;
@@ -75,8 +76,8 @@ public class DockerClient {
             throw new IllegalArgumentException(format("Unsupported endpoint scheme. Only http and https are supported: [dockerEndpoint=%s]", dockerEndpoint));
         }
 
-        _httpClient.getProperties().put(ClientConfig.PROPERTY_CONNECT_TIMEOUT, 2000);
-        _httpClient.getProperties().put(ClientConfig.PROPERTY_READ_TIMEOUT, 5000);
+        _httpClient.getProperties().put(ClientConfig.PROPERTY_CONNECT_TIMEOUT, (int) TimeUnit.SECONDS.toMillis(5));
+        _httpClient.getProperties().put(ClientConfig.PROPERTY_READ_TIMEOUT, (int) TimeUnit.SECONDS.toMillis(30));
 
         if (sslContext == null && !"http".equals(dockerEndpoint.getScheme())) {
             // Attach currently directly uses sockets, so we need to ensure the jersey client and
