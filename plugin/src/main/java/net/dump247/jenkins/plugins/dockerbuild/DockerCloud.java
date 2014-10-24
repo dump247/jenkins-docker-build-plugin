@@ -209,8 +209,8 @@ public abstract class DockerCloud extends Cloud {
                         nodeLabels,
                         _directoryMappings,
                         Optional.fromNullable(slaveJarPath)));
-            } catch (IOException ex) {
-                LOG.warn("Error provisioning node: host={0}", host.host, ex);
+            } catch (Exception ex) {
+                LOG.warn("Error provisioning node: image={0}, host={1}", imageName, host.host, ex);
             }
         }
 

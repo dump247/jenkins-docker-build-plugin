@@ -19,6 +19,7 @@ import java.net.URI;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 import static java.lang.String.format;
@@ -99,11 +100,16 @@ public class DockerCloudHost {
             Jenkins.getInstance().addNode(slave);
 
             Computer slaveComputer = slave.toComputer();
-            slaveComputer.connect(false);
+            slaveComputer.connect(false).get();
 
             return slave;
         } catch (Descriptor.FormException ex) {
             throw new IllegalArgumentException(ex);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            return null;
+        } catch (ExecutionException ex) {
+            throw Throwables.propagate(ex);
         }
     }
 }
