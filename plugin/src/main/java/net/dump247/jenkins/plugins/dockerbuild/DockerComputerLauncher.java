@@ -1,7 +1,11 @@
 package net.dump247.jenkins.plugins.dockerbuild;
 
+import com.google.common.base.Charsets;
 import com.google.common.base.Optional;
+import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
+import com.google.common.io.CharStreams;
+import com.google.common.io.InputSupplier;
 import hudson.Extension;
 import hudson.model.TaskListener;
 import hudson.remoting.Channel;
@@ -23,6 +27,7 @@ import net.dump247.jenkins.plugins.dockerbuild.log.Logger;
 import org.apache.commons.lang.mutable.MutableInt;
 
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.io.PrintStream;
 import java.util.List;
 
@@ -35,36 +40,20 @@ public class DockerComputerLauncher extends ComputerLauncher {
     /**
      * Bash script that launches the slave jar *
      */
-    private static final String SLAVE_SCRIPT = "" +
-            "SLAVE_JAR_PATH=\"%s\"\n" +
-            "SLAVE_JAR_URL=\"%s\"\n" +
-            "\n" +
-            "if [ -f \"$SLAVE_JAR_PATH\" ]; then\n" +
-            "    cp -f \"$SLAVE_JAR_PATH\" /tmp/slave.jar\n" +
-            "else\n" +
-            "    if which curl; then\n" +
-            "        curl -f --retry 3 -o /tmp/slave.jar \"$SLAVE_JAR_URL\" || exit 1000\n" +
-            "    elif which wget; then\n" +
-            "        wget -O /tmp/slave.jar \"$SLAVE_JAR_URL\" || exit 1000" +
-            "    else\n" +
-            "        echo No local slave jar. Unable to find curl/wget to download slave jar. 1>&2\n" +
-            "        exit 1000\n" +
-            "    fi\n" +
-            "fi\n" +
-            "\n" +
-            "JAVA_HOME=${JDK_HOME:-$JAVA_HOME}\n" +
-            "if [ -z \"$JAVA_HOME\" ]; then\n" +
-            "    JAVA_BIN=`which java`\n" +
-            "else\n" +
-            "    JAVA_BIN=$JAVA_HOME/bin/java\n" +
-            "fi\n" +
-            "\n" +
-            "if [ -z \"$JAVA_BIN\" ]; then\n" +
-            "    echo Unable to find java executable: JDK_HOME, JAVA_HOME, PATH 1>&2\n" +
-            "    exit 2000\n" +
-            "fi\n" +
-            "\n" +
-            "\"$JAVA_BIN\" -jar /tmp/slave.jar";
+    private static final String SLAVE_SCRIPT;
+
+    static {
+        try {
+            SLAVE_SCRIPT = CharStreams.toString(new InputSupplier<InputStreamReader>() {
+                @Override
+                public InputStreamReader getInput() throws IOException {
+                    return new InputStreamReader(DockerComputerLauncher.class.getResourceAsStream("slave_launch.sh"), Charsets.US_ASCII);
+                }
+            });
+        } catch (IOException ex) {
+            throw Throwables.propagate(ex);
+        }
+    }
 
     private final DockerClient _dockerClient;
     private final String _imageName;
