@@ -1,12 +1,9 @@
 package net.dump247.jenkins.plugins.dockerbuild;
 
 import com.google.common.base.Optional;
-import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Sets;
 import hudson.model.Computer;
 import hudson.model.LoadBalancer;
 import hudson.model.Queue;
-import hudson.model.labels.LabelAtom;
 import hudson.model.queue.MappingWorksheet;
 import hudson.model.queue.MappingWorksheet.ExecutorChunk;
 import hudson.model.queue.MappingWorksheet.Mapping;
@@ -16,7 +13,6 @@ import jenkins.model.Jenkins;
 import net.dump247.jenkins.plugins.dockerbuild.log.Logger;
 
 import java.util.Map;
-import java.util.Set;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.collect.Maps.newHashMap;
@@ -132,18 +128,24 @@ public class DockerLoadBalancer extends LoadBalancer {
     }
 
     public ProvisionResult provisionSlave(DockerGlobalConfiguration configuration, WorkChunk workChunk) {
+        boolean isSupported = false;
+
         for (Cloud cloud : Jenkins.getInstance().clouds) {
             if (cloud instanceof DockerCloud) {
                 DockerCloud dockerCloud = (DockerCloud) cloud;
                 ProvisionResult provisionResult = dockerCloud.provisionJob(workChunk);
 
-                if (provisionResult.isSupported()) {
+                if (provisionResult.isProvisioned()) {
                     return provisionResult;
+                } else if (provisionResult.isSupported()) {
+                    isSupported = true;
                 }
             }
         }
 
-        return ProvisionResult.notSupported();
+        return isSupported
+                ? ProvisionResult.noCapacity()
+                : ProvisionResult.notSupported();
     }
 
     private static final class WorkSlave {
