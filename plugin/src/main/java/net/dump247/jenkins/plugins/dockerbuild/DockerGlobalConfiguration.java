@@ -19,7 +19,6 @@ import static com.google.common.base.Preconditions.checkNotNull;
 @Extension
 public class DockerGlobalConfiguration extends GlobalConfiguration {
     private List<LabeledDockerImage> _labeledImages = ImmutableList.of();
-//    private List<DockerCloud> _clouds = ImmutableList.of();
 
     public DockerGlobalConfiguration() {
         // Classes deriving from GlobalConfiguration must call load() in their constructor
