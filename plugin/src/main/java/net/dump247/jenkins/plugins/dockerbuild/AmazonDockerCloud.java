@@ -82,8 +82,12 @@ public class AmazonDockerCloud extends DockerCloud {
             if (filterLine.length() > 0) {
                 String[] nameValues = filterLine.split("=", 2);
                 checkArgument(nameValues.length == 2, format("Filter must be 'name=value[,value,value] (line %d): %s", lineNum, filterLine));
+
+                String filterName = nameValues[0].trim();
+                checkArgument(filterName.length() > 0, format("Filter must be 'name=value[,value,value] (line %d): %s", lineNum, filterLine));
+
                 filters.add(new Filter()
-                        .withName(nameValues[0])
+                        .withName(filterName)
                         .withValues(nameValues[1].split(",")));
             }
         }
