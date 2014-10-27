@@ -1,6 +1,7 @@
 <?jelly escape-by-default='true'?>
 <j:jelly xmlns:j="jelly:core" xmlns:f="/lib/form">
-    <f:entry title="EC2 Instance Filters" field="filterString">
-        <f:expandableTextbox/>
+    <f:entry title="EC2 Instance Filters" field="filterString"
+             description="One entry per line. Format: name=value[,value,...]">
+        <f:textarea/>
     </f:entry>
 </j:jelly>
