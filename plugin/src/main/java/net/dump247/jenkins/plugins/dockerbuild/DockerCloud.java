@@ -357,7 +357,7 @@ public abstract class DockerCloud extends Cloud {
         return directoryBindings.build();
     }
 
-    private static String cleanLine(String line) {
+    protected static String cleanLine(String line) {
         int commentIndex = line.indexOf('#');
 
         return commentIndex >= 0
