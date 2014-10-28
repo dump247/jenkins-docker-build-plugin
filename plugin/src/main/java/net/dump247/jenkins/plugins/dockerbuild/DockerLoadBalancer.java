@@ -73,7 +73,7 @@ public class DockerLoadBalancer extends LoadBalancer {
 
             if (fallbackMapping != null) {
                 for (int nodeIndex = 0; nodeIndex < worksheet.works.size(); nodeIndex += 1) {
-                    if (provisionedNodes[nodeIndex]) {
+                    if (!provisionedNodes[nodeIndex]) {
                         mapping.assign(nodeIndex, fallbackMapping.assigned(nodeIndex));
                     }
                 }
