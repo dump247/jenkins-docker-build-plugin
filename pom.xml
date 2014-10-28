@@ -7,6 +7,12 @@
     <version>0.1-SNAPSHOT</version>
     <packaging>pom</packaging>
 
+    <scm>
+        <connection>scm:git:git@github.com:dump247/jenkins-docker-build-plugin.git</connection>
+        <url>https://github.com/dump247/jenkins-docker-build-plugin/</url>
+        <developerConnection>scm:git:git@github.com:dump247/jenkins-docker-build-plugin.git</developerConnection>
+    </scm>
+
     <modules>
         <module>plugin</module>
         <module>docker-api</module>
