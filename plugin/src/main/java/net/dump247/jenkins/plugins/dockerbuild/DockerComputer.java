@@ -4,17 +4,19 @@ import hudson.model.Executor;
 import hudson.model.Queue;
 import hudson.remoting.Channel;
 import hudson.slaves.SlaveComputer;
-import net.dump247.jenkins.plugins.dockerbuild.log.Logger;
 
 import java.io.IOException;
 import java.io.OutputStream;
-import java.util.concurrent.Future;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import static java.lang.String.format;
 
-/** Represents a computer running a jenkins job in a docker container. */
+/**
+ * Represents a computer running a jenkins job in a docker container.
+ */
 public class DockerComputer extends SlaveComputer {
-    private static final Logger LOG = Logger.get(DockerComputer.class);
+    private static final Logger LOG = Logger.getLogger(DockerComputer.class.getName());
 
     private final DockerSlave _slave;
 
@@ -42,21 +44,21 @@ public class DockerComputer extends SlaveComputer {
     @Override
     public void taskAccepted(final Executor executor, final Queue.Task task) {
         super.taskAccepted(executor, task);
-        LOG.debug("Docker task accepted: task={0}", task.getName());
+        LOG.fine(format("Docker task accepted: task=%s", task.getName()));
         _hasAcceptedJob = true;
     }
 
     @Override
     public void taskCompleted(final Executor executor, final Queue.Task task, final long durationMS) {
         super.taskCompleted(executor, task, durationMS);
-        LOG.debug("Docker task completed: task={0}", task.getName());
+        LOG.fine(format("Docker task completed: task=%s", task.getName()));
         jobComplete();
     }
 
     @Override
     public void taskCompletedWithProblems(final Executor executor, final Queue.Task task, final long durationMS, final Throwable problems) {
         super.taskCompletedWithProblems(executor, task, durationMS, problems);
-        LOG.warn("Docker task completed with problems: task={0}", task.getName(), problems);
+        LOG.log(Level.WARNING, format("Docker task completed with problems: task=%s", task.getName()), problems);
         jobComplete();
     }
 
@@ -81,7 +83,7 @@ public class DockerComputer extends SlaveComputer {
         try {
             _slave.terminate();
         } catch (IOException ex) {
-            LOG.warn("Error terminating docker slave", ex);
+            LOG.log(Level.WARNING, "Error terminating docker slave", ex);
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
         }

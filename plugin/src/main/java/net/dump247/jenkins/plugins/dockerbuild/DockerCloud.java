@@ -26,7 +26,6 @@ import hudson.util.ListBoxModel;
 import jenkins.model.Jenkins;
 import net.dump247.docker.DirectoryBinding;
 import net.dump247.docker.DockerClient;
-import net.dump247.jenkins.plugins.dockerbuild.log.Logger;
 import org.kohsuke.stapler.QueryParameter;
 
 import javax.annotation.Nullable;
@@ -34,7 +33,6 @@ import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLSession;
-import java.io.IOException;
 import java.net.URI;
 import java.security.KeyManagementException;
 import java.security.KeyStoreException;
@@ -48,6 +46,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import static com.google.common.base.Strings.emptyToNull;
 import static com.google.common.base.Strings.isNullOrEmpty;
@@ -72,7 +72,7 @@ import static java.util.Collections.unmodifiableSet;
  */
 public abstract class DockerCloud extends Cloud {
     private static final String IMAGE_LABEL_PREFIX = "docker/";
-    private static final Logger LOG = Logger.get(DockerCloud.class);
+    private static final Logger LOG = Logger.getLogger(DockerCloud.class.getName());
     private static final SchemeRequirement HTTPS_SCHEME = new SchemeRequirement("https");
     private static final Map<String, DirectoryBinding.Access> BINDING_ACCESS = ImmutableMap.of(
             "r", DirectoryBinding.Access.READ,
@@ -203,14 +203,14 @@ public abstract class DockerCloud extends Cloud {
     private ProvisionResult provisionJob(String imageName, Set<LabelAtom> nodeLabels) {
         for (HostCount host : listAvailableHosts()) {
             try {
-                LOG.info("Provisioning node: host={0} capacity={1}", host.host, host.capacity);
+                LOG.fine(format("Provisioning node: host=%s capacity=%d", host.host, host.capacity));
                 return ProvisionResult.provisioned(host.host.provisionSlave(
                         imageName,
                         nodeLabels,
                         _directoryMappings,
                         Optional.fromNullable(slaveJarPath)));
             } catch (Exception ex) {
-                LOG.warn("Error provisioning node: image={0}, host={1}", imageName, host.host, ex);
+                LOG.log(Level.WARNING, format("Error provisioning node: image=%s, host=%s", imageName, host.host), ex);
             }
         }
 
@@ -235,7 +235,7 @@ public abstract class DockerCloud extends Cloud {
                     availableHosts.add(new HostCount(host, this.maxExecutors - count));
                 }
             } catch (Exception ex) {
-                LOG.warn("Error getting status from docker host {0}", host, ex);
+                LOG.log(Level.WARNING, format("Error getting status from docker host %s", host), ex);
             }
         }
 

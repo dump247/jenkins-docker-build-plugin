@@ -9,12 +9,12 @@ import com.amazonaws.services.ec2.model.Instance;
 import com.amazonaws.services.ec2.model.Reservation;
 import hudson.Extension;
 import hudson.util.FormValidation;
-import net.dump247.jenkins.plugins.dockerbuild.log.Logger;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.QueryParameter;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.logging.Logger;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Strings.nullToEmpty;
@@ -27,7 +27,7 @@ import static java.lang.String.format;
  * Given a filter, the cloud searches for instances that match the filter.
  */
 public class AmazonDockerCloud extends DockerCloud {
-    private static final Logger LOG = Logger.get(AmazonDockerCloud.class);
+    private static final Logger LOG = Logger.getLogger(AmazonDockerCloud.class.getName());
 
     public final String filterString;
     private transient List<Filter> _filters;
@@ -53,7 +53,7 @@ public class AmazonDockerCloud extends DockerCloud {
             for (Reservation reservation : result.getReservations()) {
                 for (Instance instance : reservation.getInstances()) {
                     String privateIp = instance.getPrivateIpAddress();
-                    LOG.info("Found host: [instance={0}] [ip={1}]", instance.getInstanceId(), privateIp);
+                    LOG.fine(format("Found host: [instance=%s] [ip=%s]", instance.getInstanceId(), privateIp));
                     hosts.add(new DockerCloudHost(buildDockerClient(privateIp)));
                 }
             }

@@ -2,7 +2,6 @@ package net.dump247.jenkins.plugins.dockerbuild;
 
 import com.google.common.collect.ImmutableList;
 import hudson.Extension;
-import net.dump247.jenkins.plugins.dockerbuild.log.Logger;
 import org.kohsuke.stapler.DataBoundConstructor;
 
 import java.util.Collection;

@@ -1,13 +1,12 @@
 package net.dump247.jenkins.plugins.dockerbuild;
 
 import hudson.slaves.RetentionStrategy;
-import net.dump247.jenkins.plugins.dockerbuild.log.Logger;
 import org.kohsuke.stapler.DataBoundConstructor;
 
 import java.io.IOException;
 import java.util.concurrent.TimeUnit;
-
-import static java.lang.String.format;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * Consulted by jenkins whether to terminate the computer running a job.
@@ -16,7 +15,7 @@ import static java.lang.String.format;
  * been run.
  */
 public class DockerRetentionStrategy extends RetentionStrategy<DockerComputer> {
-    private static final Logger LOG = Logger.get(DockerRetentionStrategy.class);
+    private static final Logger LOG = Logger.getLogger(DockerRetentionStrategy.class.getName());
     private static final long JOB_ACCEPT_TIMEOUT_MS = TimeUnit.MINUTES.toMillis(1);
 
     @DataBoundConstructor
@@ -40,10 +39,10 @@ public class DockerRetentionStrategy extends RetentionStrategy<DockerComputer> {
 
     private void terminate(final DockerComputer computer) {
         try {
-            LOG.debug("Terminating docker slave");
+            LOG.fine("Terminating docker slave");
             computer.getSlave().terminate();
         } catch (IOException ex) {
-            LOG.warn("Error terminating docker slave", ex);
+            LOG.log(Level.WARNING, "Error terminating docker slave", ex);
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
         }

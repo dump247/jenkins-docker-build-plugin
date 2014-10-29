@@ -10,16 +10,17 @@ import hudson.model.queue.MappingWorksheet.Mapping;
 import hudson.model.queue.MappingWorksheet.WorkChunk;
 import hudson.slaves.Cloud;
 import jenkins.model.Jenkins;
-import net.dump247.jenkins.plugins.dockerbuild.log.Logger;
 
 import java.util.Map;
+import java.util.logging.Logger;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.collect.Maps.newHashMap;
+import static java.lang.String.format;
 
 public class DockerLoadBalancer extends LoadBalancer {
     private static final String IMAGE_LABEL_PREFIX = "docker/";
-    private static final Logger LOG = Logger.get(DockerLoadBalancer.class);
+    private static final Logger LOG = Logger.getLogger(DockerLoadBalancer.class.getName());
     private static final LoadBalancer NULL_LOAD_BALANCER = new LoadBalancer() {
         @Override
         public Mapping map(final Queue.Task task, final MappingWorksheet worksheet) {
@@ -38,7 +39,7 @@ public class DockerLoadBalancer extends LoadBalancer {
 
     @Override
     public Mapping map(final Queue.Task task, final MappingWorksheet worksheet) {
-        LOG.debug("map({0}, {1} chunks)", task.getName(), worksheet.works.size());
+        LOG.fine(format("map(%s, %d chunks)", task.getName(), worksheet.works.size()));
         Mapping mapping = worksheet.new Mapping();
         boolean[] provisionedNodes = new boolean[worksheet.works.size()];
         int provisionedNodeCount = 0;
@@ -49,7 +50,7 @@ public class DockerLoadBalancer extends LoadBalancer {
             WorkSlave workSlave = loadSlave(configuration, workChunk);
 
             if (workSlave == null) {
-                LOG.debug("No docker slave found for chunk {0}", workIndex);
+                LOG.fine(format("No docker slave found for chunk %d", workIndex));
                 continue;
             }
 
@@ -57,7 +58,7 @@ public class DockerLoadBalancer extends LoadBalancer {
                 ExecutorChunk workChunkExecutor = workSlave.findExecutor(workChunk);
 
                 if (workChunkExecutor != null) {
-                    LOG.debug("Mapped chunk {0} to executor {0}", workIndex, workChunkExecutor);
+                    LOG.fine(format("Mapped chunk %d to executor %s", workIndex, workChunkExecutor));
                     mapping.assign(workIndex, workChunkExecutor);
                 }
             }
@@ -68,7 +69,7 @@ public class DockerLoadBalancer extends LoadBalancer {
 
         // Use fallback load balancer for any work chunks that could not be provisioned with docker slaves
         if (provisionedNodeCount < worksheet.works.size()) {
-            LOG.debug("Attempting to fall back for {0} chunks", worksheet.works.size());
+            LOG.fine(format("Attempting to fall back for %d chunks", worksheet.works.size()));
             Mapping fallbackMapping = _fallbackLoadBalancer.map(task, worksheet);
 
             if (fallbackMapping != null) {
