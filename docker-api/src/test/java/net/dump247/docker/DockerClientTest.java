@@ -10,9 +10,9 @@ import com.xebialabs.restito.semantics.Call;
 import com.xebialabs.restito.server.StubServer;
 import org.glassfish.grizzly.http.server.Response;
 import org.glassfish.grizzly.http.util.HttpStatus;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.testng.annotations.AfterMethod;
+import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.Test;
 
 import javax.annotation.Nullable;
 import java.net.URI;
@@ -27,22 +27,21 @@ import static com.xebialabs.restito.semantics.Condition.delete;
 import static com.xebialabs.restito.semantics.Condition.get;
 import static com.xebialabs.restito.semantics.Condition.post;
 import static com.xebialabs.restito.semantics.Condition.withHeader;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNull;
 
 /** Test fixture for {@link DockerClient}. */
 public class DockerClientTest {
     private StubServer _stubServer;
     private URI _serverEndpoint;
 
-    @Before
+    @BeforeMethod
     public void setUp() {
         _stubServer = new StubServer().run();
         _serverEndpoint = URI.create("http://localhost:" + _stubServer.getPort());
     }
 
-    @After
+    @AfterMethod
     public void tearDown() {
         _stubServer.stop();
     }
@@ -63,9 +62,9 @@ public class DockerClientTest {
 
         DockerVersionResponse version = new DockerClient(_serverEndpoint).version();
 
-        assertEquals("0.6.6", version.getVersion());
-        assertEquals("6d42040", version.getGitCommit());
-        assertEquals("go1.2rc3", version.getGoVersion());
+        assertEquals(version.getVersion(), "0.6.6");
+        assertEquals(version.getGitCommit(), "6d42040");
+        assertEquals(version.getGoVersion(), "go1.2rc3");
         assertNull(version.getArch());
         assertNull(version.getKernelVersion());
         assertNull(version.getOs());
@@ -87,20 +86,20 @@ public class DockerClientTest {
 
         DockerVersionResponse version = new DockerClient(_serverEndpoint).version();
 
-        assertEquals("0.6.6", version.getVersion());
-        assertEquals("6d42040", version.getGitCommit());
-        assertEquals("go1.2rc3", version.getGoVersion());
-        assertEquals("amd64", version.getArch());
-        assertEquals("3.8.0-35-generic", version.getKernelVersion());
-        assertEquals("linux", version.getOs());
+        assertEquals(version.getVersion(), "0.6.6");
+        assertEquals(version.getGitCommit(), "6d42040");
+        assertEquals(version.getGoVersion(), "go1.2rc3");
+        assertEquals(version.getArch(), "amd64");
+        assertEquals(version.getKernelVersion(), "3.8.0-35-generic");
+        assertEquals(version.getOs(), "linux");
     }
 
-    @Test(expected = ClientHandlerException.class)
+    @Test(expectedExceptions = ClientHandlerException.class)
     public void version_with_docker_endpoint_down() throws Exception {
         new DockerClient(URI.create("http://localhost:60000")).version();
     }
 
-    @Test(expected = DockerException.class)
+    @Test(expectedExceptions = DockerException.class)
     public void version_with_server_error() throws Exception {
         whenHttp(_stubServer)
                 .match(
@@ -155,8 +154,8 @@ public class DockerClientTest {
                         .withWorkingDir("/home/something")
                         .withVolumes("/other/dir"));
 
-        assertEquals("572ec83f5139", response.getContainerId());
-        assertEquals(Arrays.asList("warning a", "warning b"), response.getWarnings());
+        assertEquals(response.getContainerId(), "572ec83f5139");
+        assertEquals(response.getWarnings(), Arrays.asList("warning a", "warning b"));
     }
 
     @Test
@@ -182,8 +181,8 @@ public class DockerClientTest {
                         .withImage("base")
                         .withCommand("some", "command"));
 
-        assertEquals("572ec83f5139", response.getContainerId());
-        assertEquals(0, response.getWarnings().size());
+        assertEquals(response.getContainerId(), "572ec83f5139");
+        assertEquals(response.getWarnings().size(), 0);
     }
 
     private static void assertJson(String expected, String actual) {
@@ -198,7 +197,7 @@ public class DockerClientTest {
             throw new RuntimeException(ex);
         }
 
-        assertEquals(expectedNode, actualNode);
+        assertEquals(actualNode, expectedNode);
     }
 
     @Test

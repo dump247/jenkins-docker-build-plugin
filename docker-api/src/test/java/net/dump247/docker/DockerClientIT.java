@@ -1,10 +1,10 @@
 package net.dump247.docker;
 
-import org.junit.After;
-import org.junit.AfterClass;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.AfterMethod;
+import org.testng.annotations.BeforeClass;
+import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.Test;
 
 import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
@@ -18,12 +18,9 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
-import static org.junit.Assert.assertArrayEquals;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.assertTrue;
-import static org.junit.matchers.JUnitMatchers.containsString;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.AssertJUnit.assertTrue;
 
 /**
  * Integration tests for {@link DockerClient}.
@@ -53,14 +50,14 @@ public class DockerClientIT {
         new DockerClient(API_URL).removeImage(UBUNTU);
     }
 
-    @Before
+    @BeforeMethod
     public void setUp() {
         _client = new DockerClient(API_URL);
         _containerIds = new ArrayList<String>();
         _imageIds = new ArrayList<String>();
     }
 
-    @After
+    @AfterMethod
     public void tearDown() throws Exception {
         for (String containerId : _containerIds) {
             _client.removeContainer(containerId);
@@ -84,7 +81,7 @@ public class DockerClientIT {
         assertTrue("Os=" + response.getOs(), response.getOs().length() > 0);
     }
 
-    @Test(expected = ImageNotFoundException.class)
+    @Test(expectedExceptions = ImageNotFoundException.class)
     public void pullImage_that_does_not_exist() throws Exception {
         _client.pullImage("no-such-image");
     }
@@ -107,7 +104,7 @@ public class DockerClientIT {
         int index = 0;
         for (ProgressEvent event : events) {
             // All events should be success events (no errors)
-            assertEquals("index: " + index, ProgressEvent.Code.Ok, event.getCode());
+            assertEquals(event.getCode(), ProgressEvent.Code.Ok, "index: " + index);
 
             // Always should have a status message
             assertTrue(event.getStatusMessage().length() > 0);
@@ -148,24 +145,24 @@ public class DockerClientIT {
 
         assertTrue(createResponse.getContainerId().length() > 0);
         _containerIds.add(createResponse.getContainerId());
-        assertEquals(0, createResponse.getWarnings().size());
+        assertEquals(createResponse.getWarnings().size(), 0);
 
         // Start the container and wait for the command to finish
         _client.startContainer(createResponse.getContainerId());
         WaitContainerResponse waitResponse = _client.waitContainer(createResponse.getContainerId());
 
-        assertEquals(0, waitResponse.getStatusCode());
+        assertEquals(waitResponse.getStatusCode(), 0);
     }
 
     @Test
     public void capture_container_output() throws Exception {
-        assertArrayEquals(
-                new String[] {
+        assertEquals(
+                runCommand(new CreateContainerRequest()
+                        .withCommand("/bin/bash", "-c", "echo test out; echo test err >&2")),
+                new String[]{
                         "test out\n",
                         "test err\n"
-                },
-                runCommand(new CreateContainerRequest()
-                        .withCommand("/bin/bash", "-c", "echo test out; echo test err >&2")));
+                });
     }
 
     private static String[] readLines(InputStream s) throws IOException {
@@ -206,26 +203,26 @@ public class DockerClientIT {
 
         String[] stderr = readLines(streams.stderr);
 
-        assertEquals(0, _client.waitContainer(containerId).getStatusCode());
-        assertArrayEquals(new String[] {"[some input]"}, stdout.get());
-        assertArrayEquals(new String[] {"test err"}, stderr);
+        assertEquals(_client.waitContainer(containerId).getStatusCode(), 0);
+        assertEquals(stdout.get(), new String[]{"[some input]"});
+        assertEquals(stderr, new String[]{"test err"});
     }
 
     @Test
     public void container_working_dir() throws Exception {
-        assertArrayEquals(
-                new String[] {
-                        "/tmp\n",
-                        ""
-                },
+        assertEquals(
                 runCommand(new CreateContainerRequest()
                         .withCommand("/bin/pwd")
-                        .withWorkingDir("/tmp")));
+                        .withWorkingDir("/tmp")),
+                new String[]{
+                        "/tmp\n",
+                        ""
+                });
     }
 
     @Test
     public void container_environment() throws Exception {
-        assertArrayEquals(
+        assertEquals(
                 new String[] {
                         "the var value\n",
                         ""
@@ -247,7 +244,7 @@ public class DockerClientIT {
         _client.startContainer(new StartContainerRequest()
                 .withContainerId(containerId)
                 .withBinding("/vagrant", "/my/vagrant"));
-        assertEquals(0, _client.waitContainer(containerId).getStatusCode());
+        assertEquals(_client.waitContainer(containerId).getStatusCode(), 0);
     }
 
     @Test
@@ -264,12 +261,12 @@ public class DockerClientIT {
         _client.startContainer(new StartContainerRequest()
                 .withContainerId(containerId)
                 .withBinding("/vagrant", "/my/vagrant", DirectoryBinding.Access.READ));
-        assertEquals(1, _client.waitContainer(containerId).getStatusCode());
+        assertEquals(_client.waitContainer(containerId).getStatusCode(), 1);
 
         String[] output = reader.join();
 
-        assertEquals("", output[0]);
-        assertThat(output[1], containsString("Read-only file system"));
+        assertEquals(output[0], "");
+        assertTrue(output[1].contains("Read-only file system"));
     }
 
     @Test
@@ -287,7 +284,7 @@ public class DockerClientIT {
         _client.startContainer(new StartContainerRequest()
                 .withContainerId(containerId)
                 .withBinding("/vagrant", "/my/vagrant", DirectoryBinding.Access.READ_WRITE));
-        assertEquals(0, _client.waitContainer(containerId).getStatusCode());
+        assertEquals(_client.waitContainer(containerId).getStatusCode(), 0);
     }
 
     private String createContainer(CreateContainerRequest request) throws DockerException {
@@ -296,7 +293,7 @@ public class DockerClientIT {
 
         CreateContainerResponse response = _client.createContainer(request);
         _containerIds.add(response.getContainerId());
-        assertEquals(0, response.getWarnings().size());
+        assertEquals(response.getWarnings().size(), 0);
         return response.getContainerId();
     }
 
@@ -309,7 +306,7 @@ public class DockerClientIT {
         OutputReader reader = new OutputReader(containerId);
 
         _client.startContainer(containerId);
-        assertEquals(0, _client.waitContainer(containerId).getStatusCode());
+        assertEquals(_client.waitContainer(containerId).getStatusCode(), 0);
 
         return reader.join();
     }
