@@ -10,7 +10,6 @@ import com.sun.jersey.api.client.ClientResponse;
 import com.sun.jersey.api.client.UniformInterfaceException;
 import com.sun.jersey.api.client.WebResource;
 import com.sun.jersey.api.client.config.ClientConfig;
-import com.sun.jersey.api.client.config.DefaultClientConfig;
 import com.sun.jersey.api.client.filter.HTTPBasicAuthFilter;
 import com.sun.jersey.client.urlconnection.HTTPSProperties;
 import com.sun.jersey.core.util.MultivaluedMapImpl;
@@ -125,6 +124,33 @@ public class DockerClient {
      */
     public static DockerClient localClient() {
         return new DockerClient(DEFAULT_LOCAL_URI, null, null, null, null);
+    }
+
+    public InspectImageResponse inspectImage(String imageName) throws DockerException {
+        return inspectImage(new InspectImageRequest().withImageName(imageName));
+    }
+
+    public InspectImageResponse inspectImage(InspectImageRequest request) throws DockerException {
+        if (request == null) {
+            throw new NullPointerException("request");
+        }
+
+        if (request.getImageName() == null || request.getImageName().length() == 0) {
+            throw new IllegalArgumentException("imageName is required");
+        }
+
+        try {
+            return resource("images/%s/json", request.getImageName()).get(InspectImageResponse.class);
+        } catch (UniformInterfaceException ex) {
+            switch (ex.getResponse().getStatus()) {
+                case 404:
+                    throw new ImageNotFoundException(format("Image %s does not exist. Be sure to pull the image before creating a container.", request.getImageName()), ex);
+                case 500:
+                    throw new DockerException("Server error", ex);
+                default:
+                    throw new DockerException("Unexpected response from server: [code=" + ex.getResponse().getStatus() + "]", ex);
+            }
+        }
     }
 
     /**
