@@ -35,7 +35,9 @@ public class AmazonDockerCloud extends DockerCloud {
     private transient AmazonEC2 _amazonEC2;
 
     @DataBoundConstructor
-    public AmazonDockerCloud(String name, String filterString, int dockerPort, String labelString, int maxExecutors, boolean tlsEnabled, String credentialsId, String directoryMappingsString, boolean allowCustomImages, String slaveJarPath) {
+    public AmazonDockerCloud(String name, String filterString, int dockerPort, String labelString,
+                             int maxExecutors, boolean tlsEnabled, String credentialsId,
+                             String directoryMappingsString, boolean allowCustomImages, String slaveJarPath) {
         super(name, dockerPort, labelString, maxExecutors, tlsEnabled, credentialsId, directoryMappingsString, allowCustomImages, slaveJarPath);
         this.filterString = filterString;
         readResolve();
@@ -54,7 +56,7 @@ public class AmazonDockerCloud extends DockerCloud {
                 for (Instance instance : reservation.getInstances()) {
                     String privateIp = instance.getPrivateIpAddress();
                     LOG.fine(format("Found host: [instance=%s] [ip=%s]", instance.getInstanceId(), privateIp));
-                    hosts.add(new DockerCloudHost(buildDockerClient(privateIp)));
+                    hosts.add(buildDockerClient(privateIp));
                 }
             }
 

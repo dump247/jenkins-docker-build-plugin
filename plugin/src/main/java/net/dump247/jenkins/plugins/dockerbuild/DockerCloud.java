@@ -7,6 +7,7 @@ import com.cloudbees.plugins.credentials.common.StandardCredentials;
 import com.cloudbees.plugins.credentials.common.StandardListBoxModel;
 import com.cloudbees.plugins.credentials.common.StandardUsernamePasswordCredentials;
 import com.cloudbees.plugins.credentials.domains.SchemeRequirement;
+import com.google.common.base.Charsets;
 import com.google.common.base.Optional;
 import com.google.common.base.Predicate;
 import com.google.common.base.Throwables;
@@ -14,8 +15,13 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
+import com.google.common.io.CharStreams;
+import com.google.common.io.InputSupplier;
+import hudson.model.AbstractProject;
+import hudson.model.Computer;
 import hudson.model.Item;
 import hudson.model.Label;
+import hudson.model.Queue;
 import hudson.model.labels.LabelAtom;
 import hudson.model.queue.MappingWorksheet;
 import hudson.security.ACL;
@@ -26,6 +32,8 @@ import hudson.util.ListBoxModel;
 import jenkins.model.Jenkins;
 import net.dump247.docker.DirectoryBinding;
 import net.dump247.docker.DockerClient;
+import net.dump247.docker.ImageName;
+import org.apache.commons.lang.RandomStringUtils;
 import org.kohsuke.stapler.QueryParameter;
 
 import javax.annotation.Nullable;
@@ -33,6 +41,8 @@ import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLSession;
+import java.io.IOException;
+import java.io.InputStreamReader;
 import java.net.URI;
 import java.security.KeyManagementException;
 import java.security.KeyStoreException;
@@ -71,6 +81,24 @@ import static java.util.Collections.unmodifiableSet;
  * </ul>
  */
 public abstract class DockerCloud extends Cloud {
+    /**
+     * Bash script that launches the Jenkins agent jar
+     */
+    private static final String AGENT_LAUNCH_SCRIPT;
+
+    static {
+        try {
+            AGENT_LAUNCH_SCRIPT = CharStreams.toString(new InputSupplier<InputStreamReader>() {
+                @Override
+                public InputStreamReader getInput() throws IOException {
+                    return new InputStreamReader(DockerComputerLauncher.class.getResourceAsStream("agent_launch.sh"), Charsets.US_ASCII);
+                }
+            });
+        } catch (IOException ex) {
+            throw Throwables.propagate(ex);
+        }
+    }
+
     private static final String IMAGE_LABEL_PREFIX = "docker/";
     private static final Logger LOG = Logger.getLogger(DockerCloud.class.getName());
     private static final SchemeRequirement HTTPS_SCHEME = new SchemeRequirement("https");
@@ -96,7 +124,9 @@ public abstract class DockerCloud extends Cloud {
 
     public final String slaveJarPath;
 
-    protected DockerCloud(String name, final int dockerPort, final String labelString, final int maxExecutors, final boolean tlsEnabled, final String credentialsId, final String directoryMappingsString, boolean allowCustomImages, String slaveJarPath) {
+    protected DockerCloud(String name, final int dockerPort, final String labelString,
+                          final int maxExecutors, final boolean tlsEnabled, final String credentialsId,
+                          final String directoryMappingsString, boolean allowCustomImages, String slaveJarPath) {
         super(name);
         this.dockerPort = dockerPort;
         this.labelString = labelString;
@@ -112,6 +142,16 @@ public abstract class DockerCloud extends Cloud {
 
     public Set<LabelAtom> getLabels() {
         return _labels;
+    }
+
+    public List<DirectoryBinding> getDirectoryMappings() {
+        return _directoryMappings;
+    }
+
+    public List<String> getLaunchCommand() {
+        String slaveJarUrl = Jenkins.getInstance().getRootUrl() + "/jnlpJars/slave.jar";
+        return ImmutableList.of("/bin/bash", "-l",
+                "-c", format(AGENT_LAUNCH_SCRIPT, nullToEmpty(slaveJarPath), slaveJarUrl));
     }
 
     @Override
@@ -165,9 +205,25 @@ public abstract class DockerCloud extends Cloud {
         return this;
     }
 
-    public ProvisionResult provisionJob(MappingWorksheet.WorkChunk job) {
+    public ProvisionResult provisionJob(DockerGlobalConfiguration configuration, Queue.Task task, MappingWorksheet.WorkChunk job) {
         if (job.assignedLabel == null) {
             return ProvisionResult.notSupported();
+        }
+
+        String jobName = job.index == 0
+                ? task.getFullDisplayName()
+                : format("%s_%d", task.getFullDisplayName(), job.index);
+
+        // Check if creating a job image is enabled
+        Optional<ImageName> commitImage = Optional.absent();
+        String commitRepo = configuration.getJobRepositoryName();
+
+        if (!isNullOrEmpty(commitRepo) && task instanceof AbstractProject) {
+            DockerJobProperty jobProperty = (DockerJobProperty) ((AbstractProject) task).getProperty(DockerJobProperty.class);
+
+            if (jobProperty != null && jobProperty.commitJobImage) {
+                commitImage = Optional.of(new ImageName(commitRepo, ImageName.encodeTag(jobName)));
+            }
         }
 
         // Discover image names specified in the job restriction label (i.e. docker/IMAGE)
@@ -179,36 +235,58 @@ public abstract class DockerCloud extends Cloud {
                         .build();
 
                 if (job.assignedLabel.matches(cloudImageLabels)) {
-                    return provisionJob(extractImageName(potentialImage), cloudImageLabels);
+                    return provisionJob(extractImageName(potentialImage), cloudImageLabels, commitImage);
                 }
             }
         }
 
-        DockerGlobalConfiguration dockerConfig = DockerGlobalConfiguration.get();
-
         // Discover if the job matches a pre-configured image
-        for (LabeledDockerImage image : dockerConfig.getLabeledImages()) {
+        for (LabeledDockerImage image : configuration.getLabeledImages()) {
             ImmutableSet.Builder<LabelAtom> cloudImageLabels = ImmutableSet.<LabelAtom>builder()
                     .addAll(image.getLabels())
                     .addAll(getLabels());
 
             if (image.concatCondition(job.assignedLabel).matches(cloudImageLabels.build())) {
-                return provisionJob(image.imageName, cloudImageLabels.add(new LabelAtom(IMAGE_LABEL_PREFIX + image.imageName)).build());
+                return provisionJob(image.imageName, cloudImageLabels.add(new LabelAtom(IMAGE_LABEL_PREFIX + image.imageName)).build(), commitImage);
             }
         }
 
         return ProvisionResult.notSupported();
     }
 
-    private ProvisionResult provisionJob(String imageName, Set<LabelAtom> nodeLabels) {
-        for (HostCount host : listAvailableHosts()) {
+    private ProvisionResult provisionJob(final String imageName, Set<LabelAtom> nodeLabels, Optional<ImageName> commitImage) {
+        for (final HostCount host : listAvailableHosts()) {
             try {
                 LOG.fine(format("Provisioning node: host=%s capacity=%d", host.host, host.capacity));
-                return ProvisionResult.provisioned(host.host.provisionSlave(
-                        imageName,
+                final DockerSlave slave = new DockerSlave(
+                        format("%s (%s)", imageName, RandomStringUtils.randomAlphanumeric(6).toLowerCase()),
+                        "Running job on image " + imageName,
+                        "/",
                         nodeLabels,
-                        _directoryMappings,
-                        Optional.fromNullable(slaveJarPath)));
+                        new DockerComputerLauncher(new DockerJob(
+                                host.host.getClient(),
+                                ImageName.parse(imageName),
+                                getLaunchCommand(),
+                                commitImage,
+                                getDirectoryMappings()))
+                );
+
+                Jenkins.getInstance().addNode(slave);
+
+                Computer.threadPoolForRemoting.submit(new Runnable() {
+                    @Override
+                    public void run() {
+                        try {
+                            Computer slaveComputer = slave.toComputer();
+                            slaveComputer.connect(false).get();
+                        } catch (Exception ex) {
+                            LOG.log(Level.SEVERE, format("Error provisioning docker agent: [image=%s] [endpoint=%s]", imageName, host.host.getClient().getEndpoint()), ex);
+                            throw Throwables.propagate(ex);
+                        }
+                    }
+                });
+
+                return ProvisionResult.provisioned(slave);
             } catch (Exception ex) {
                 LOG.log(Level.WARNING, format("Error provisioning node: image=%s, host=%s", imageName, host.host), ex);
             }
@@ -245,7 +323,7 @@ public abstract class DockerCloud extends Cloud {
         return availableHosts;
     }
 
-    protected DockerClient buildDockerClient(String host) {
+    protected DockerCloudHost buildDockerClient(String host) {
         try {
             URI dockerApiUri = URI.create(format("%s://%s:%d", tlsEnabled ? "https" : "http", host, this.dockerPort));
             SSLContext sslContext = tlsEnabled ? SSLContext.getInstance("TLS") : null;
@@ -281,7 +359,7 @@ public abstract class DockerCloud extends Cloud {
                 }
             }
 
-            return new DockerClient(dockerApiUri, sslContext, ALLOW_ALL_HOSTNAMES, username, password);
+            return new DockerCloudHost(new DockerClient(dockerApiUri, sslContext, ALLOW_ALL_HOSTNAMES, username, password));
         } catch (NoSuchAlgorithmException ex) {
             throw Throwables.propagate(ex);
         } catch (KeyManagementException ex) {
@@ -419,6 +497,24 @@ public abstract class DockerCloud extends Cloud {
             return result.length() > 0 && result.charAt(0) != '/'
                     ? FormValidation.error("Path must be absolute")
                     : FormValidation.ok();
+        }
+
+        public FormValidation doCheckTaskRepositoryName(@QueryParameter String value, @QueryParameter boolean commitEnabled) {
+            value = nullToEmpty(value).trim();
+
+            if (commitEnabled && value.length() == 0) {
+                return FormValidation.error("Required if commit enabled");
+            }
+
+            if (value.length() > 0) {
+                try {
+                    new ImageName(value);
+                } catch (Exception ex) {
+                    return FormValidation.error("Value is not a valid repository name");
+                }
+            }
+
+            return FormValidation.ok();
         }
     }
 

@@ -19,7 +19,6 @@ import static com.google.common.collect.Maps.newHashMap;
 import static java.lang.String.format;
 
 public class DockerLoadBalancer extends LoadBalancer {
-    private static final String IMAGE_LABEL_PREFIX = "docker/";
     private static final Logger LOG = Logger.getLogger(DockerLoadBalancer.class.getName());
     private static final LoadBalancer NULL_LOAD_BALANCER = new LoadBalancer() {
         @Override
@@ -47,7 +46,7 @@ public class DockerLoadBalancer extends LoadBalancer {
 
         for (int workIndex = 0; workIndex < worksheet.works.size(); workIndex++) {
             WorkChunk workChunk = worksheet.works(workIndex);
-            WorkSlave workSlave = loadSlave(configuration, workChunk);
+            WorkSlave workSlave = loadSlave(configuration, task, workChunk);
 
             if (workSlave == null) {
                 LOG.fine(format("No docker slave found for chunk %d", workIndex));
@@ -75,7 +74,11 @@ public class DockerLoadBalancer extends LoadBalancer {
             if (fallbackMapping != null) {
                 for (int nodeIndex = 0; nodeIndex < worksheet.works.size(); nodeIndex += 1) {
                     if (!provisionedNodes[nodeIndex]) {
-                        mapping.assign(nodeIndex, fallbackMapping.assigned(nodeIndex));
+                        ExecutorChunk executorChunk = fallbackMapping.assigned(nodeIndex);
+
+                        if (executorChunk != null && !(executorChunk.node instanceof DockerSlave)) {
+                            mapping.assign(nodeIndex, executorChunk);
+                        }
                     }
                 }
             }
@@ -86,11 +89,11 @@ public class DockerLoadBalancer extends LoadBalancer {
                 : null;
     }
 
-    private WorkSlave loadSlave(DockerGlobalConfiguration configuration, WorkChunk workChunk) {
+    private WorkSlave loadSlave(DockerGlobalConfiguration configuration, Queue.Task task, WorkChunk workChunk) {
         DockerSlave slave = _provisionedSlaves.get(workChunk);
 
         if (slave == null) {
-            ProvisionResult result = provisionSlave(configuration, workChunk);
+            ProvisionResult result = provisionSlave(configuration, task, workChunk);
 
             if (!result.isSupported()) {
                 return null;
@@ -107,7 +110,7 @@ public class DockerLoadBalancer extends LoadBalancer {
         if (slaveComputer == null) {
             _provisionedSlaves.remove(workChunk);
 
-            ProvisionResult result = provisionSlave(configuration, workChunk);
+            ProvisionResult result = provisionSlave(configuration, task, workChunk);
 
             if (!result.isSupported()) {
                 return null;
@@ -128,13 +131,13 @@ public class DockerLoadBalancer extends LoadBalancer {
         return new WorkSlave(slave, slaveComputer);
     }
 
-    public ProvisionResult provisionSlave(DockerGlobalConfiguration configuration, WorkChunk workChunk) {
+    public ProvisionResult provisionSlave(DockerGlobalConfiguration configuration, Queue.Task task, WorkChunk workChunk) {
         boolean isSupported = false;
 
         for (Cloud cloud : Jenkins.getInstance().clouds) {
             if (cloud instanceof DockerCloud) {
                 DockerCloud dockerCloud = (DockerCloud) cloud;
-                ProvisionResult provisionResult = dockerCloud.provisionJob(workChunk);
+                ProvisionResult provisionResult = dockerCloud.provisionJob(configuration, task, workChunk);
 
                 if (provisionResult.isProvisioned()) {
                     return provisionResult;
