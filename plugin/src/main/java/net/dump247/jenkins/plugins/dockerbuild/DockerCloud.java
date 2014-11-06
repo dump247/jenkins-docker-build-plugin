@@ -215,14 +215,13 @@ public abstract class DockerCloud extends Cloud {
                 : format("%s_%d", task.getFullDisplayName(), job.index);
 
         // Check if creating a job image is enabled
-        Optional<ImageName> commitImage = Optional.absent();
-        String commitRepo = configuration.getJobRepositoryName();
+        boolean resetJob = false;
 
-        if (!isNullOrEmpty(commitRepo) && task instanceof AbstractProject) {
+        if (task instanceof AbstractProject) {
             DockerJobProperty jobProperty = (DockerJobProperty) ((AbstractProject) task).getProperty(DockerJobProperty.class);
 
-            if (jobProperty != null && jobProperty.commitJobImage) {
-                commitImage = Optional.of(new ImageName(commitRepo, ImageName.encodeTag(jobName)));
+            if (jobProperty != null) {
+                resetJob = jobProperty.resetJob;
             }
         }
 
@@ -235,7 +234,7 @@ public abstract class DockerCloud extends Cloud {
                         .build();
 
                 if (job.assignedLabel.matches(cloudImageLabels)) {
-                    return provisionJob(extractImageName(potentialImage), cloudImageLabels, commitImage);
+                    return provisionJob(extractImageName(potentialImage), cloudImageLabels, jobName, resetJob);
                 }
             }
         }
@@ -247,14 +246,14 @@ public abstract class DockerCloud extends Cloud {
                     .addAll(getLabels());
 
             if (image.concatCondition(job.assignedLabel).matches(cloudImageLabels.build())) {
-                return provisionJob(image.imageName, cloudImageLabels.add(new LabelAtom(IMAGE_LABEL_PREFIX + image.imageName)).build(), commitImage);
+                return provisionJob(image.imageName, cloudImageLabels.add(new LabelAtom(IMAGE_LABEL_PREFIX + image.imageName)).build(), jobName, resetJob);
             }
         }
 
         return ProvisionResult.notSupported();
     }
 
-    private ProvisionResult provisionJob(final String imageName, Set<LabelAtom> nodeLabels, Optional<ImageName> commitImage) {
+    private ProvisionResult provisionJob(final String imageName, Set<LabelAtom> nodeLabels, String jobName, boolean resetJob) {
         for (final HostCount host : listAvailableHosts()) {
             try {
                 LOG.fine(format("Provisioning node: host=%s capacity=%d", host.host, host.capacity));
@@ -265,9 +264,10 @@ public abstract class DockerCloud extends Cloud {
                         nodeLabels,
                         new DockerComputerLauncher(new DockerJob(
                                 host.host.getClient(),
+                                jobName,
                                 ImageName.parse(imageName),
                                 getLaunchCommand(),
-                                commitImage,
+                                resetJob,
                                 getDirectoryMappings()))
                 );
 

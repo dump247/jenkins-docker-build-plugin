@@ -135,21 +135,7 @@ public class ImageName {
             throw new IllegalArgumentException("empty value not allowed");
         }
 
-        Matcher invalidMatch = ENCODE_TAG_PATTERN.matcher(value);
-
-        if (invalidMatch.find()) {
-            StringBuffer buffer = new StringBuffer(value.length() * 2);
-            invalidMatch.appendReplacement(buffer, encodeChar(value.charAt(invalidMatch.start())));
-
-            while (invalidMatch.find()) {
-                invalidMatch.appendReplacement(buffer, encodeChar(value.charAt(invalidMatch.start())));
-            }
-
-            invalidMatch.appendTail(buffer);
-            value = buffer.toString();
-        }
-
-        return value;
+        return Utils.encodeWithZ(value, ENCODE_TAG_PATTERN);
     }
 
     private static String encodeChar(char ch) {

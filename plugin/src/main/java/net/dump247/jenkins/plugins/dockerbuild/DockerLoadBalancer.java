@@ -53,13 +53,12 @@ public class DockerLoadBalancer extends LoadBalancer {
                 continue;
             }
 
-            if (workSlave.isReady()) {
-                ExecutorChunk workChunkExecutor = workSlave.findExecutor(workChunk);
+            ExecutorChunk workChunkExecutor = workSlave.findExecutor(workChunk);
+            LOG.fine(format("executor: %s", workChunkExecutor));
 
-                if (workChunkExecutor != null) {
-                    LOG.fine(format("Mapped chunk %d to executor %s", workIndex, workChunkExecutor));
-                    mapping.assign(workIndex, workChunkExecutor);
-                }
+            if (workChunkExecutor != null) {
+                LOG.fine(format("Mapped chunk %d to executor %s", workIndex, workChunkExecutor));
+                mapping.assign(workIndex, workChunkExecutor);
             }
 
             provisionedNodes[workIndex] = true;
@@ -161,13 +160,6 @@ public class DockerLoadBalancer extends LoadBalancer {
         public WorkSlave(DockerSlave slave, Computer computer) {
             this.slave = slave;
             this.computer = computer;
-        }
-
-        public boolean isReady() {
-            return computer != null &&
-                    computer.isAcceptingTasks() &&
-                    computer.isOnline() &&
-                    computer.isIdle();
         }
 
         public ExecutorChunk findExecutor(WorkChunk workChunk) {

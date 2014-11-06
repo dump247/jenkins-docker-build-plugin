@@ -20,6 +20,18 @@ public class ContainerVolume {
         _path = path;
     }
 
+    @Override
+    public boolean equals(Object obj) {
+        return obj instanceof ContainerVolume &&
+                (this == obj || _path.equals(((ContainerVolume) obj)._path));
+
+    }
+
+    @Override
+    public int hashCode() {
+        return _path.hashCode();
+    }
+
     public String getPath() {
         return _path;
     }

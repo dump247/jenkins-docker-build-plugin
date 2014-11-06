@@ -354,7 +354,13 @@ public class DockerClient {
         }
 
         try {
-            return api("containers/create").post(CreateContainerResponse.class, request);
+            WebResource resource = resource("containers/create");
+
+            if (request.getName().length() > 0) {
+                resource = resource.queryParam("name", request.getName());
+            }
+
+            return json(resource).post(CreateContainerResponse.class, request);
         } catch (UniformInterfaceException ex) {
             switch (ex.getResponse().getStatus()) {
                 case 404:
@@ -362,6 +368,25 @@ public class DockerClient {
                 case 406:
                     // TODO What does this error really mean?
                     throw new DockerException("Impossible to attach (container not running).", ex);
+                case 500:
+                    throw new DockerException("Server error", ex);
+                default:
+                    throw new DockerException("Unexpected response from server: [code=" + ex.getResponse().getStatus() + "]", ex);
+            }
+        }
+    }
+
+    public InspectContainerResponse inspectContainer(String containerId) throws DockerException {
+        return inspectContainer(new InspectContainerRequest().withId(containerId));
+    }
+
+    public InspectContainerResponse inspectContainer(InspectContainerRequest request) throws DockerException {
+        try {
+            return api("containers/%s/json", request.getId()).get(InspectContainerResponse.class);
+        } catch (UniformInterfaceException ex) {
+            switch (ex.getResponse().getStatus()) {
+                case 404:
+                    throw new ContainerNotFoundException(format("Container %s does not exist.", request.getId()), ex);
                 case 500:
                     throw new DockerException("Server error", ex);
                 default:
@@ -645,7 +670,6 @@ public class DockerClient {
         try {
             URI uri = UriBuilder.fromUri(_apiEndpoint).path(format("containers/%s/attach", containerId))
                     .queryParam("stream", "1")
-                    .queryParam("logs", "1")
                     .queryParam("stdin", "1")
                     .queryParam("stdout", "1")
                     .queryParam("stderr", "1")
@@ -834,7 +858,7 @@ public class DockerClient {
             WebResource resource = resource("containers/%s/stop", request.getContainerId());
 
             if (request.getTimeoutSeconds() != 0) {
-                resource.queryParam("t", Integer.toString(request.getTimeoutSeconds()));
+                resource = resource.queryParam("t", Integer.toString(request.getTimeoutSeconds()));
             }
 
             json(resource).post();
@@ -874,7 +898,7 @@ public class DockerClient {
             WebResource resource = resource("/containers/json");
 
             if (request.getLimit() > 0) {
-                resource.queryParam("limit", Integer.toString(request.getLimit()));
+                resource = resource.queryParam("limit", Integer.toString(request.getLimit()));
             }
 
             // Docker v0.8.0 returns Content-Type = text/plain

@@ -1,7 +1,7 @@
 package net.dump247.jenkins.plugins.dockerbuild;
 
-import com.google.common.base.Optional;
 import com.google.common.collect.ImmutableList;
+import net.dump247.docker.ContainerNotFoundException;
 import net.dump247.docker.ContainerVolume;
 import net.dump247.docker.CreateContainerRequest;
 import net.dump247.docker.CreateContainerResponse;
@@ -9,7 +9,7 @@ import net.dump247.docker.DirectoryBinding;
 import net.dump247.docker.DockerClient;
 import net.dump247.docker.DockerException;
 import net.dump247.docker.ImageName;
-import net.dump247.docker.ImageNotFoundException;
+import net.dump247.docker.InspectContainerResponse;
 import net.dump247.docker.InspectImageResponse;
 import net.dump247.docker.ProgressEvent;
 import net.dump247.docker.ProgressListener;
@@ -17,7 +17,6 @@ import net.dump247.docker.StartContainerRequest;
 import org.apache.commons.lang.mutable.MutableInt;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -34,18 +33,24 @@ public class DockerJob {
 
     private final DockerClient _dockerClient;
     private final ImageName _jobImage;
-    private final Optional<ImageName> _commitImage;
+    private final boolean _resetJob;
+    private final String _jobName;
     private final List<DirectoryBinding> _directoryMappings;
     private final List<String> _launchCommand;
 
-    public DockerJob(DockerClient dockerClient, ImageName jobImage, List<String> launchCommand, Optional<ImageName> commitImage, List<DirectoryBinding> directoryMappings) {
+    private final String _jobContainerName;
+
+    public DockerJob(DockerClient dockerClient, String jobName, ImageName jobImage, List<String> launchCommand, boolean resetJob, List<DirectoryBinding> directoryMappings) {
         _dockerClient = checkNotNull(dockerClient);
+        _jobName = checkNotNull(jobName);
         _jobImage = checkNotNull(jobImage);
         _launchCommand = ImmutableList.copyOf(launchCommand);
-        _commitImage = checkNotNull(commitImage);
+        _resetJob = resetJob;
         _directoryMappings = ImmutableList.copyOf(directoryMappings);
 
         checkArgument(launchCommand.size() > 0, "launchCommand can not be empty");
+
+        _jobContainerName = CreateContainerRequest.encodeName(_jobName);
     }
 
     public DockerClient getDockerClient() {
@@ -57,42 +62,74 @@ public class DockerJob {
 
         try {
             pullImage(_jobImage.toString(), listener);
-
-            if (_commitImage.isPresent()) {
-                InspectImageResponse jobImageDetails = _dockerClient.inspectImage(_jobImage.toString());
-
-                try {
-                    InspectImageResponse taskImageDetails = _dockerClient.inspectImage(_commitImage.get().toString());
-
-                    if (Objects.equals(taskImageDetails.getParentId(), jobImageDetails.getId())) {
-                        containerImage = _commitImage.get();
-                    }
-                } catch (ImageNotFoundException ex) {
-                    LOG.log(Level.FINE, format("Task image not found, will be created when container exits: [image=%s]", _commitImage.get()), ex);
-                }
-            }
-
-            String containerId = createContainer(containerImage.toString(), listener);
+            String containerId = createContainer(listener);
             DockerClient.ContainerStreams streams = _dockerClient.attachContainerStreams(containerId);
             _dockerClient.startContainer(new StartContainerRequest()
                     .withContainerId(containerId)
                     .withBindings(_directoryMappings));
 
-            return new DockerJobContainer(_dockerClient, containerId, streams, _commitImage);
+            return new DockerJobContainer(_dockerClient, containerId, streams, _resetJob);
         } catch (Exception ex) {
             throw new RuntimeException(format("Error starting job container: [image=%s] [endpoint=%s]", containerImage, _dockerClient.getEndpoint()), ex);
         }
     }
 
-    private String createContainer(String imageName, Listener listener) throws DockerException {
+    private String createContainer(Listener listener) throws DockerException {
+        CreateContainerRequest containerRequest = buildContainerRequest();
+
+        try {
+            LOG.fine(format("Inspecting container %s", _jobContainerName));
+            InspectContainerResponse containerInfo = _dockerClient.inspectContainer(_jobContainerName);
+
+            if (!_resetJob) {
+                if (optionsEqual(containerInfo.getConfig(), containerRequest)) {
+                    InspectImageResponse jobImageDetails = _dockerClient.inspectImage(_jobImage.toString());
+
+                    LOG.fine(format("Options are equal! jobImage=%s containerImage=%s", jobImageDetails.getId(), containerInfo.getImageId()));
+                    if (jobImageDetails.getId().equals(containerInfo.getImageId())) {
+                        return containerInfo.getId();
+                    }
+                }
+            }
+
+            LOG.fine(format("Deleting old container: %s", containerInfo.getId()));
+            _dockerClient.removeContainer(containerInfo.getId());
+        } catch (ContainerNotFoundException ex) {
+            LOG.log(Level.FINE, format("Job container not found. Will create new container: [containerName=%s]", _jobContainerName), ex);
+        }
+
+        CreateContainerResponse response = _dockerClient.createContainer(containerRequest);
+
+        for (String warning : response.getWarnings()) {
+            LOG.warning(format("Warning from docker creating container: [image=%s] [containerId=%s] [message=%s]", _jobImage, response.getContainerId(), warning));
+            listener.warn("DOCKER (%s/%s): %s", _jobImage, response.getContainerId(), warning);
+        }
+
+        return response.getContainerId();
+    }
+
+    private boolean optionsEqual(InspectContainerResponse.ContainerConfig config, CreateContainerRequest containerRequest) {
+        return config.isAttachStderr() == containerRequest.isAttachStderr() &&
+                config.isAttachStdin() == containerRequest.isAttachStdin() &&
+                config.isAttachStdout() == containerRequest.isAttachStdout() &&
+                config.isOpenStdin() == containerRequest.isOpenStdin() &&
+                config.isStdinOnce() == containerRequest.isStdinOnce() &&
+                config.isTty() == containerRequest.isTty() &&
+                config.getCommand().equals(containerRequest.getCommand()) &&
+                config.getVolumes().equals(containerRequest.getVolumes());
+    }
+
+    private CreateContainerRequest buildContainerRequest() {
         List<ContainerVolume> volumes = newArrayListWithCapacity(_directoryMappings.size());
 
         for (DirectoryBinding binding : _directoryMappings) {
             volumes.add(new ContainerVolume(binding.getContainerPath()));
         }
 
-        CreateContainerResponse response = _dockerClient.createContainer(new CreateContainerRequest()
-                .withImage(imageName)
+        // NOTE if you add new options to the container, be sure to update #optionsEqual
+        return new CreateContainerRequest()
+                .withName(_jobContainerName)
+                .withImage(_jobImage.toString())
                 .withAttachStderr(true)
                 .withAttachStdin(true)
                 .withAttachStdout(true)
@@ -100,14 +137,7 @@ public class DockerJob {
                 .withOpenStdin(true)
                 .withTty(false)
                 .withVolumes(volumes)
-                .withCommand(_launchCommand));
-
-        for (String warning : response.getWarnings()) {
-            LOG.warning(format("Warning from docker creating container: [image=%s] [containerId=%s] [message=%s]", imageName, response.getContainerId(), warning));
-            listener.warn("DOCKER (%s/%s): %s", imageName, response.getContainerId(), warning);
-        }
-
-        return response.getContainerId();
+                .withCommand(_launchCommand);
     }
 
     private void pullImage(final String imageName, final Listener listener) throws DockerException {

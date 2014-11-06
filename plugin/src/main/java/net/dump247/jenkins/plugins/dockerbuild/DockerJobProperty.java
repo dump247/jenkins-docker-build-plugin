@@ -7,11 +7,11 @@ import hudson.model.JobPropertyDescriptor;
 import org.kohsuke.stapler.DataBoundConstructor;
 
 public class DockerJobProperty extends JobProperty<AbstractProject<?, ?>> {
-    public final boolean commitJobImage;
+    public final boolean resetJob;
 
     @DataBoundConstructor
-    public DockerJobProperty(boolean commitJobImage) {
-        this.commitJobImage = commitJobImage;
+    public DockerJobProperty(boolean resetJob) {
+        this.resetJob = resetJob;
     }
 
     @Extension

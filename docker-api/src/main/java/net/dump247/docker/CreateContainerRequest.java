@@ -1,23 +1,36 @@
 package net.dump247.docker;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonGenerator;
+import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.JsonDeserializer;
 import com.fasterxml.jackson.databind.JsonSerializer;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializerProvider;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
-/** Options for creating a new docker container. */
+/**
+ * Options for creating a new docker container.
+ */
 @JsonInclude(JsonInclude.Include.NON_DEFAULT)
 public class CreateContainerRequest {
+    private static final Pattern NAME_PATTERN = Pattern.compile("^[a-zA-Z0-9_-]+$");
+    private static final Pattern ENCODE_NAME_PATTERN = Pattern.compile("[^a-zA-Z0-9_-]");
+
     private String _hostname = "";
     private String _user = "";
     private long _memoryLimit;
@@ -34,6 +47,40 @@ public class CreateContainerRequest {
     private String _image;
     private String _workingDir = "";
     private List<ContainerVolume> _volumes;
+    private String _name = "";
+
+    /**
+     * Name to assign to the container or empty string to generate a name.
+     *
+     * @return name or empty
+     */
+    public String getName() {
+        return _name;
+    }
+
+    @JsonIgnore
+    public void setName(final String name) {
+        if (name == null) {
+            throw new NullPointerException("name");
+        } else if (name.length() > 0 && !NAME_PATTERN.matcher(name).matches()) {
+            throw new IllegalArgumentException("invalid name value: " + name);
+        }
+
+        _name = name;
+    }
+
+    public CreateContainerRequest withName(final String name) {
+        setName(name);
+        return this;
+    }
+
+    public static String encodeName(String value) {
+        if (value == null) {
+            throw new NullPointerException("value");
+        }
+
+        return Utils.encodeWithZ(value, ENCODE_NAME_PATTERN);
+    }
 
     /**
      * Container hostname.
@@ -392,7 +439,7 @@ public class CreateContainerRequest {
         }
     }
 
-    private static class VolumeSerializer extends JsonSerializer<List<ContainerVolume>> {
+    static class VolumeSerializer extends JsonSerializer<List<ContainerVolume>> {
         @Override
         public void serialize(final List<ContainerVolume> value, final JsonGenerator jgen, final SerializerProvider provider) throws IOException, JsonProcessingException {
             if (value == null) {
@@ -414,6 +461,21 @@ public class CreateContainerRequest {
         @Override
         public boolean isEmpty(final List<ContainerVolume> value) {
             return value == null || value.isEmpty();
+        }
+    }
+
+    static class VolumeDeserializer extends JsonDeserializer<List<ContainerVolume>> {
+        @Override
+        public List<ContainerVolume> deserialize(JsonParser jp, DeserializationContext ctxt) throws IOException, JsonProcessingException {
+            Map<String, Object> map = new ObjectMapper().readValue(jp, new TypeReference<Map<String, Object>>() {
+            });
+            List<ContainerVolume> volumes = new ArrayList<ContainerVolume>(map.size());
+
+            for (String path : map.keySet()) {
+                volumes.add(new ContainerVolume(path));
+            }
+
+            return Collections.unmodifiableList(volumes);
         }
     }
 }

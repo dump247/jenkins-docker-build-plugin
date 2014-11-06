@@ -1,11 +1,8 @@
 package net.dump247.jenkins.plugins.dockerbuild;
 
-import com.google.common.base.Optional;
-import net.dump247.docker.CommitContainerRequest;
 import net.dump247.docker.ContainerNotFoundException;
 import net.dump247.docker.DockerClient;
 import net.dump247.docker.DockerException;
-import net.dump247.docker.ImageName;
 
 import java.io.Closeable;
 import java.io.InputStream;
@@ -24,9 +21,9 @@ public class DockerJobContainer {
     private final InputStream _stdout;
     private final InputStream _stderr;
     private final DockerClient _dockerClient;
-    private final Optional<ImageName> _commitImage;
+    private final boolean _deleteContainer;
 
-    public DockerJobContainer(DockerClient dockerClient, String containerId, DockerClient.ContainerStreams streams, Optional<ImageName> commitImage) {
+    public DockerJobContainer(DockerClient dockerClient, String containerId, DockerClient.ContainerStreams streams, boolean deleteContainer) {
         _dockerClient = checkNotNull(dockerClient);
         _containerId = checkNotNull(containerId);
 
@@ -35,7 +32,7 @@ public class DockerJobContainer {
         _stderr = streams.stderr;
         _stdout = streams.stdout;
 
-        _commitImage = checkNotNull(commitImage);
+        _deleteContainer = deleteContainer;
     }
 
     public String getContainerId() {
@@ -68,28 +65,15 @@ public class DockerJobContainer {
             LOG.log(Level.FINE, format("Error stopping container: [containerId=%s]", _containerId), ex);
         }
 
-        if (_commitImage.isPresent()) {
+        if (_deleteContainer) {
             try {
-                _dockerClient.commitContainer(new CommitContainerRequest()
-                        .withContainerId(_containerId)
-                        .withAuthor("jenkins")
-                        .withRepository(_commitImage.get().getRepository())
-                        .withTag(_commitImage.get().getTag()));
+                _dockerClient.removeContainer(_containerId);
             } catch (ContainerNotFoundException ex) {
                 LOG.log(Level.FINE, format("Container not found: [containerId=%s]", _containerId), ex);
                 return;
             } catch (DockerException ex) {
-                LOG.log(Level.FINE, format("Error committing container: [containerId=%s]", _containerId), ex);
+                LOG.log(Level.FINE, format("Error removing container: [containerId=%s]", _containerId), ex);
             }
-        }
-
-        try {
-            _dockerClient.removeContainer(_containerId);
-        } catch (ContainerNotFoundException ex) {
-            LOG.log(Level.FINE, format("Container not found: [containerId=%s]", _containerId), ex);
-            return;
-        } catch (DockerException ex) {
-            LOG.log(Level.FINE, format("Error removing container: [containerId=%s]", _containerId), ex);
         }
     }
 
