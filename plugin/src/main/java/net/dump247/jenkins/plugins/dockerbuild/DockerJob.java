@@ -58,12 +58,16 @@ public class DockerJob {
     }
 
     public DockerJobContainer start(Listener listener) {
+        LOG.info(format("Starting job docker container: name=%s image=%s server=%s resetEnabled=%s", _jobContainerName, _jobImage, _dockerClient.getEndpoint(), _resetJob));
+
         ImageName containerImage = _jobImage;
 
         try {
             pullImage(_jobImage.toString(), listener);
             String containerId = createContainer(listener);
             DockerClient.ContainerStreams streams = _dockerClient.attachContainerStreams(containerId);
+
+            LOG.fine(format("Starting job container %s", containerId));
             _dockerClient.startContainer(new StartContainerRequest()
                     .withContainerId(containerId)
                     .withBindings(_directoryMappings));
@@ -78,26 +82,33 @@ public class DockerJob {
         CreateContainerRequest containerRequest = buildContainerRequest();
 
         try {
-            LOG.fine(format("Inspecting container %s", _jobContainerName));
             InspectContainerResponse containerInfo = _dockerClient.inspectContainer(_jobContainerName);
 
-            if (!_resetJob) {
+            if (_resetJob) {
+                LOG.fine(format("Deleting old job container: name=%s id=%s", _jobContainerName, containerInfo.getId()));
+            } else {
+                LOG.fine(format("Existing job container found: name=%s id=%s", _jobContainerName, containerInfo.getId()));
+
                 if (optionsEqual(containerInfo.getConfig(), containerRequest)) {
+                    LOG.fine(format("Container options have not changed. Checking job image %s", _jobImage));
                     InspectImageResponse jobImageDetails = _dockerClient.inspectImage(_jobImage.toString());
 
-                    LOG.fine(format("Options are equal! jobImage=%s containerImage=%s", jobImageDetails.getId(), containerInfo.getImageId()));
                     if (jobImageDetails.getId().equals(containerInfo.getImageId())) {
+                        LOG.fine(format("Job image has not changed. Reusing existing container %s", containerInfo.getId()));
                         return containerInfo.getId();
                     }
                 }
             }
 
-            LOG.fine(format("Deleting old container: %s", containerInfo.getId()));
+            LOG.fine(format("Container configuration has changed. Deleting old container: name=%s id=%s", _jobContainerName, containerInfo.getId()));
             _dockerClient.removeContainer(containerInfo.getId());
         } catch (ContainerNotFoundException ex) {
-            LOG.log(Level.FINE, format("Job container not found. Will create new container: [containerName=%s]", _jobContainerName), ex);
+            if (!_resetJob) {
+                LOG.fine(format("No existing job container found to reuse for %s", _jobContainerName));
+            }
         }
 
+        LOG.fine(format("Creating new job container: name=%s image=%s", containerRequest.getName(), containerRequest.getImage()));
         CreateContainerResponse response = _dockerClient.createContainer(containerRequest);
 
         for (String warning : response.getWarnings()) {

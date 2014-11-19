@@ -52,6 +52,8 @@ public class DockerJobContainer {
     }
 
     public void stop() {
+        LOG.fine(format("Stopping job container: id=%s server=%s deleteContainer=%s", _containerId, _dockerClient.getEndpoint(), _deleteContainer));
+
         closeStream(_stdin, "stdin");
         closeStream(_stdout, "stdout");
         closeStream(_stderr, "stderr");
@@ -79,7 +81,7 @@ public class DockerJobContainer {
 
     private void closeStream(Closeable stream, String name) {
         try {
-            LOG.fine(format("Closing container %s: [containerId=%s]", name, _containerId));
+            LOG.finer(format("Closing container %s: [containerId=%s]", name, _containerId));
             stream.close();
         } catch (Throwable ex) {
             LOG.log(Level.FINE, format("Error closing container %s: [containerId=%s]", name, _containerId), ex);
