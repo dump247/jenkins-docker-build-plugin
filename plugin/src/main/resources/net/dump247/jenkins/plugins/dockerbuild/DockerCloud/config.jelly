@@ -30,22 +30,19 @@
         <f:textarea/>
     </f:entry>
 
-    <f:section title="Security">
-        <f:entry title="Enable TLS" field="tlsEnabled">
-            <f:checkbox/>
-        </f:entry>
+    <f:entry title="Slave Jar Path" field="slaveJarPath"
+             description="Location of the Jenkins slave jar in the container">
+        <f:textbox/>
+    </f:entry>
 
+    <f:optionalBlock name="tlsEnabled"
+                     title="Enable TLS"
+                     inline="true"
+                     checked="${instance.tlsEnabled}">
         <f:entry title="Credentials" field="credentialsId"
-                 description="Credentials to use to access the docker server (TLS required)">
+                 description="Credentials to use to access the docker server">
             <c:select/>
         </f:entry>
-    </f:section>
-
-    <f:advanced>
-        <f:entry title="Slave Jar Path" field="slaveJarPath"
-                 description="Location of the Jenkins slave jar in the container">
-            <f:textbox/>
-        </f:entry>
-    </f:advanced>
+    </f:optionalBlock>
 
 </j:jelly>

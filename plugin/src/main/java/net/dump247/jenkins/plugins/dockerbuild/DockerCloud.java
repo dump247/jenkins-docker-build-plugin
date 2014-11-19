@@ -464,12 +464,6 @@ public abstract class DockerCloud extends Cloud {
                     : FormValidation.ok();
         }
 
-        public FormValidation doCheckCredentialsId(@QueryParameter String value, @QueryParameter boolean tlsEnabled) {
-            return !tlsEnabled && !isNullOrEmpty(value)
-                    ? FormValidation.error("TLS is required when authentication is enabled")
-                    : FormValidation.ok();
-        }
-
         public FormValidation doCheckDirectoryMappingsString(@QueryParameter String value) {
             try {
                 parseBindings(value);
