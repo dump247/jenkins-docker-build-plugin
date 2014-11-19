@@ -19,7 +19,6 @@ import static com.google.common.base.Preconditions.checkNotNull;
 @Extension
 public class DockerGlobalConfiguration extends GlobalConfiguration {
     private List<LabeledDockerImage> _labeledImages = ImmutableList.of();
-    private String _jobRepositoryName = "docker/job";
 
     public DockerGlobalConfiguration() {
         // Classes deriving from GlobalConfiguration must call load() in their constructor
@@ -49,14 +48,5 @@ public class DockerGlobalConfiguration extends GlobalConfiguration {
     public void setLabeledImages(final List<LabeledDockerImage> labeledImages) {
         checkNotNull(labeledImages);
         _labeledImages = ImmutableList.copyOf(labeledImages);
-    }
-
-    public String getJobRepositoryName() {
-        return _jobRepositoryName;
-    }
-
-    public void setJobRepositoryName(String jobRepositoryName) {
-        checkNotNull(jobRepositoryName);
-        _jobRepositoryName = jobRepositoryName;
     }
 }
