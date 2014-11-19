@@ -7,11 +7,17 @@ import hudson.model.JobPropertyDescriptor;
 import org.kohsuke.stapler.DataBoundConstructor;
 
 public class DockerJobProperty extends JobProperty<AbstractProject<?, ?>> {
+    public final boolean buildEnvironmentEnabled;
     public final boolean resetJob;
 
     @DataBoundConstructor
-    public DockerJobProperty(boolean resetJob) {
+    public DockerJobProperty(boolean buildEnvironmentEnabled, boolean resetJob) {
+        this.buildEnvironmentEnabled = buildEnvironmentEnabled;
         this.resetJob = resetJob;
+    }
+
+    public boolean resetJobEnabled() {
+        return buildEnvironmentEnabled && resetJob;
     }
 
     @Extension

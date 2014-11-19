@@ -8,7 +8,6 @@ import com.cloudbees.plugins.credentials.common.StandardListBoxModel;
 import com.cloudbees.plugins.credentials.common.StandardUsernamePasswordCredentials;
 import com.cloudbees.plugins.credentials.domains.SchemeRequirement;
 import com.google.common.base.Charsets;
-import com.google.common.base.Optional;
 import com.google.common.base.Predicate;
 import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
@@ -221,7 +220,7 @@ public abstract class DockerCloud extends Cloud {
             DockerJobProperty jobProperty = (DockerJobProperty) ((AbstractProject) task).getProperty(DockerJobProperty.class);
 
             if (jobProperty != null) {
-                resetJob = jobProperty.resetJob;
+                resetJob = jobProperty.resetJobEnabled();
             }
         }
 
