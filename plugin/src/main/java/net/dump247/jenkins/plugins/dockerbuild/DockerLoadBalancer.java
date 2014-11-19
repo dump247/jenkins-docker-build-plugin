@@ -12,6 +12,7 @@ import hudson.slaves.Cloud;
 import jenkins.model.Jenkins;
 
 import java.util.Map;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import static com.google.common.base.Preconditions.checkNotNull;
@@ -38,9 +39,8 @@ public class DockerLoadBalancer extends LoadBalancer {
 
     @Override
     public Mapping map(final Queue.Task task, final MappingWorksheet worksheet) {
-        LOG.fine(format("map(%s, %d chunks)", task.getName(), worksheet.works.size()));
+        LOG.finer(format("map(%s, %d chunks)", task.getName(), worksheet.works.size()));
         Mapping mapping = worksheet.new Mapping();
-        boolean[] provisionedNodes = new boolean[worksheet.works.size()];
         int provisionedNodeCount = 0;
         DockerGlobalConfiguration configuration = DockerGlobalConfiguration.get();
 
@@ -49,41 +49,35 @@ public class DockerLoadBalancer extends LoadBalancer {
             WorkSlave workSlave = loadSlave(configuration, task, workChunk);
 
             if (workSlave == null) {
-                LOG.fine(format("No docker slave found for chunk %d", workIndex));
                 continue;
             }
 
             ExecutorChunk workChunkExecutor = workSlave.findExecutor(workChunk);
-            LOG.fine(format("executor: %s", workChunkExecutor));
 
             if (workChunkExecutor != null) {
-                LOG.fine(format("Mapped chunk %d to executor %s", workIndex, workChunkExecutor));
+                LOG.fine(format("%s[%d]: Task assigned to docker node %s", task.getFullDisplayName(), workIndex, workChunkExecutor));
                 mapping.assign(workIndex, workChunkExecutor);
+            } else {
+                LOG.fine(format("%s[%d]: Docker node provisioning in process", task.getFullDisplayName(), workIndex));
             }
 
-            provisionedNodes[workIndex] = true;
             provisionedNodeCount += 1;
         }
 
-        // Use fallback load balancer for any work chunks that could not be provisioned with docker slaves
-        if (provisionedNodeCount < worksheet.works.size()) {
-            LOG.fine(format("Attempting to fall back for %d chunks", worksheet.works.size()));
-            Mapping fallbackMapping = _fallbackLoadBalancer.map(task, worksheet);
-
-            if (fallbackMapping != null) {
-                for (int nodeIndex = 0; nodeIndex < worksheet.works.size(); nodeIndex += 1) {
-                    if (!provisionedNodes[nodeIndex]) {
-                        ExecutorChunk executorChunk = fallbackMapping.assigned(nodeIndex);
-
-                        if (executorChunk != null && !(executorChunk.node instanceof DockerSlave)) {
-                            mapping.assign(nodeIndex, executorChunk);
-                        }
-                    }
-                }
+        if (!mapping.isCompletelyValid() && provisionedNodeCount < worksheet.works.size()) {
+            if (provisionedNodeCount != 0) {
+                LOG.log(Level.SEVERE, "" +
+                        "%s: Partial docker and default provisioning is not supported. " +
+                        "All tasks must be docker enabled or not docker enabled. " +
+                        "This configuration is not currently supported, but may be in the future.",
+                        task.getFullDisplayName());
+            } else {
+                LOG.fine(format("%s: Using default task node mapper", task.getFullDisplayName()));
+                mapping = _fallbackLoadBalancer.map(task, worksheet);
             }
         }
 
-        return mapping.isCompletelyValid()
+        return mapping != null && mapping.isCompletelyValid()
                 ? mapping
                 : null;
     }
