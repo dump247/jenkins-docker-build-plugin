@@ -497,24 +497,6 @@ public abstract class DockerCloud extends Cloud {
                     ? FormValidation.error("Path must be absolute")
                     : FormValidation.ok();
         }
-
-        public FormValidation doCheckTaskRepositoryName(@QueryParameter String value, @QueryParameter boolean commitEnabled) {
-            value = nullToEmpty(value).trim();
-
-            if (commitEnabled && value.length() == 0) {
-                return FormValidation.error("Required if commit enabled");
-            }
-
-            if (value.length() > 0) {
-                try {
-                    new ImageName(value);
-                } catch (Exception ex) {
-                    return FormValidation.error("Value is not a valid repository name");
-                }
-            }
-
-            return FormValidation.ok();
-        }
     }
 
     private static final class HostCount implements Comparable<HostCount> {
