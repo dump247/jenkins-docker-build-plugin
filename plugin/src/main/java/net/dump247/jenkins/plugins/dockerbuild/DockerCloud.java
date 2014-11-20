@@ -302,10 +302,12 @@ public abstract class DockerCloud extends Cloud {
         Collection<DockerCloudHost> allHosts = listHosts();
 
         if (allHosts.size() == 0) {
-            LOG.warning(format("No hosts found for docker cloud %s", getDisplayName()));
+            LOG.warning(format("No hosts found for docker cloud: name=%s", getDisplayName()));
             return ImmutableList.of();
         }
 
+        int totalCapacity = 0;
+        int totalRunning = 0;
         ArrayList<HostCount> availableHosts = newArrayListWithCapacity(allHosts.size());
 
         for (DockerCloudHost host : allHosts) {
@@ -313,14 +315,29 @@ public abstract class DockerCloud extends Cloud {
                 host.status(); // Query for status to check if host is available and ready
 
                 int count = host.countRunningJobs();
+                totalRunning += count;
 
                 if (count < this.maxExecutors) {
-                    availableHosts.add(new HostCount(host, this.maxExecutors - count));
+                    int hostCapacity = this.maxExecutors - count;
+                    totalCapacity += hostCapacity;
+                    availableHosts.add(new HostCount(host, hostCapacity));
                 }
             } catch (Exception ex) {
                 LOG.log(Level.WARNING, format("Error getting status from docker host %s", host), ex);
             }
         }
+
+        LOG.log(
+                availableHosts.size() == 0 ? Level.WARNING : Level.FINE,
+                format(
+                        "%d/%d hosts with available capacity in docker cloud: name=%s running=%d capacity=%d",
+                        availableHosts.size(),
+                        allHosts.size(),
+                        getDisplayName(),
+                        totalRunning,
+                        totalCapacity
+                )
+        );
 
         // Sort from highest to lowest so we attempt to provision on least busy node first
         Collections.sort(availableHosts);

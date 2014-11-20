@@ -50,15 +50,17 @@ public class DockerLoadBalancer extends LoadBalancer {
 
             if (workSlave == null) {
                 continue;
-            }
-
-            ExecutorChunk workChunkExecutor = workSlave.findExecutor(workChunk);
-
-            if (workChunkExecutor != null) {
-                LOG.fine(format("%s[%d]: Task assigned to docker node %s", task.getFullDisplayName(), workIndex, workChunkExecutor));
-                mapping.assign(workIndex, workChunkExecutor);
+            } else if (workSlave == WorkSlave.NO_CAPACITY) {
+                LOG.warning(format("%s[%d]: No docker cloud capacity available to provision job", task.getFullDisplayName(), workIndex));
             } else {
-                LOG.fine(format("%s[%d]: Docker node provisioning in process", task.getFullDisplayName(), workIndex));
+                ExecutorChunk workChunkExecutor = workSlave.findExecutor(workChunk);
+
+                if (workChunkExecutor != null) {
+                    LOG.fine(format("%s[%d]: Task assigned to docker node %s", task.getFullDisplayName(), workIndex, workChunkExecutor));
+                    mapping.assign(workIndex, workChunkExecutor);
+                } else {
+                    LOG.fine(format("%s[%d]: Docker node provisioning in process", task.getFullDisplayName(), workIndex));
+                }
             }
 
             provisionedNodeCount += 1;
@@ -67,9 +69,9 @@ public class DockerLoadBalancer extends LoadBalancer {
         if (!mapping.isCompletelyValid() && provisionedNodeCount < worksheet.works.size()) {
             if (provisionedNodeCount != 0) {
                 LOG.log(Level.SEVERE, "" +
-                        "%s: Partial docker and default provisioning is not supported. " +
-                        "All tasks must be docker enabled or not docker enabled. " +
-                        "This configuration is not currently supported, but may be in the future.",
+                                "%s: Partial docker and default provisioning is not supported. " +
+                                "All tasks must be docker enabled or not docker enabled. " +
+                                "This configuration is not currently supported, but may be in the future.",
                         task.getFullDisplayName());
             } else {
                 LOG.fine(format("%s: Using default task node mapper", task.getFullDisplayName()));
@@ -139,10 +141,6 @@ public class DockerLoadBalancer extends LoadBalancer {
                     isSupported = true;
                 }
             }
-        }
-
-        if (isSupported) {
-            LOG.warning(format("No docker cloud capacity available: job=%s[%d]", task.getFullDisplayName(), workChunk.index));
         }
 
         return isSupported
