@@ -300,6 +300,12 @@ public abstract class DockerCloud extends Cloud {
      */
     private List<HostCount> listAvailableHosts() {
         Collection<DockerCloudHost> allHosts = listHosts();
+
+        if (allHosts.size() == 0) {
+            LOG.warning(format("No hosts found for docker cloud %s", getDisplayName()));
+            return ImmutableList.of();
+        }
+
         ArrayList<HostCount> availableHosts = newArrayListWithCapacity(allHosts.size());
 
         for (DockerCloudHost host : allHosts) {

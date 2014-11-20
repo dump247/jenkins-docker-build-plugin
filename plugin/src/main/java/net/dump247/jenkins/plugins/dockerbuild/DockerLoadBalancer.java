@@ -133,11 +133,16 @@ public class DockerLoadBalancer extends LoadBalancer {
                 ProvisionResult provisionResult = dockerCloud.provisionJob(configuration, task, workChunk);
 
                 if (provisionResult.isProvisioned()) {
+                    LOG.fine(format("Provisioned docker job node: job=%s[%d] cloud=%s", task.getFullDisplayName(), workChunk.index, dockerCloud.getDisplayName()));
                     return provisionResult;
                 } else if (provisionResult.isSupported()) {
                     isSupported = true;
                 }
             }
+        }
+
+        if (isSupported) {
+            LOG.warning(format("No docker cloud capacity available: job=%s[%d]", task.getFullDisplayName(), workChunk.index));
         }
 
         return isSupported
