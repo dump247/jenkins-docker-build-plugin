@@ -10,6 +10,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 public class InspectImageResponse {
     private String _id;
     private String _parentId;
+    private ContainerConfig _containerConfig;
 
     public String getId() {
         return _id;
@@ -27,5 +28,14 @@ public class InspectImageResponse {
     @JsonProperty("parent")
     public void setParentId(String parentId) {
         _parentId = parentId;
+    }
+
+    public ContainerConfig getContainerConfig() {
+        return _containerConfig;
+    }
+
+    @JsonProperty("container_config")
+    public void setContainerConfig(ContainerConfig config) {
+        _containerConfig = config;
     }
 }

@@ -62,9 +62,11 @@ import static com.google.common.base.Strings.emptyToNull;
 import static com.google.common.base.Strings.isNullOrEmpty;
 import static com.google.common.base.Strings.nullToEmpty;
 import static com.google.common.collect.Lists.newArrayListWithCapacity;
+import static com.google.common.collect.Lists.newArrayListWithExpectedSize;
 import static com.google.common.collect.Sets.newHashSet;
 import static java.lang.String.format;
 import static java.util.Collections.unmodifiableSet;
+import static net.dump247.jenkins.plugins.dockerbuild.ConfigUtil.splitConfigLines;
 
 /**
  * Cloud of docker servers to run jenkins jobs on.
@@ -215,12 +217,14 @@ public abstract class DockerCloud extends Cloud {
 
         // Check if creating a job image is enabled
         boolean resetJob = false;
+        Map<String, String> envVars = ImmutableMap.of();
 
         if (task instanceof AbstractProject) {
             DockerJobProperty jobProperty = (DockerJobProperty) ((AbstractProject) task).getProperty(DockerJobProperty.class);
 
             if (jobProperty != null) {
                 resetJob = jobProperty.resetJobEnabled();
+                envVars = jobProperty.getEnvironmentVars();
             }
         }
 
@@ -233,7 +237,7 @@ public abstract class DockerCloud extends Cloud {
                         .build();
 
                 if (job.assignedLabel.matches(cloudImageLabels)) {
-                    return provisionJob(extractImageName(potentialImage), cloudImageLabels, jobName, resetJob);
+                    return provisionJob(extractImageName(potentialImage), cloudImageLabels, jobName, resetJob, envVars);
                 }
             }
         }
@@ -245,14 +249,14 @@ public abstract class DockerCloud extends Cloud {
                     .addAll(getLabels());
 
             if (image.concatCondition(job.assignedLabel).matches(cloudImageLabels.build())) {
-                return provisionJob(image.imageName, cloudImageLabels.add(new LabelAtom(IMAGE_LABEL_PREFIX + image.imageName)).build(), jobName, resetJob);
+                return provisionJob(image.imageName, cloudImageLabels.add(new LabelAtom(IMAGE_LABEL_PREFIX + image.imageName)).build(), jobName, resetJob, envVars);
             }
         }
 
         return ProvisionResult.notSupported();
     }
 
-    private ProvisionResult provisionJob(final String imageName, Set<LabelAtom> nodeLabels, String jobName, boolean resetJob) {
+    private ProvisionResult provisionJob(final String imageName, Set<LabelAtom> nodeLabels, String jobName, boolean resetJob, Map<String, String> environmentVars) {
         for (final HostCount host : listAvailableHosts()) {
             try {
                 LOG.fine(format("Provisioning node: host=%s capacity=%d", host.host, host.capacity));
@@ -267,7 +271,8 @@ public abstract class DockerCloud extends Cloud {
                                 ImageName.parse(imageName),
                                 getLaunchCommand(),
                                 resetJob,
-                                getDirectoryMappings()))
+                                getDirectoryMappings(),
+                                environmentVars))
                 );
 
                 Jenkins.getInstance().addNode(slave);
@@ -395,74 +400,58 @@ public abstract class DockerCloud extends Cloud {
 
     private static List<DirectoryBinding> parseBindings(String bindingsString) {
         ImmutableList.Builder<DirectoryBinding> directoryBindings = ImmutableList.builder();
-        int lineNum = 0;
         Set<String> containerDirs = newHashSet();
 
-        if (!isNullOrEmpty(bindingsString)) {
-            for (String line : bindingsString.split("[\r\n]+")) {
-                lineNum += 1;
-                line = cleanLine(line);
+        for (ConfigUtil.ConfigLine line : splitConfigLines(bindingsString)) {
+            String[] parts = line.value.split(":");
 
-                if (line.length() > 0) {
-                    String[] parts = line.split(":");
+            if (parts.length == 0 || parts.length > 3) {
+                throw new IllegalArgumentException(format("Invalid directory mapping (line %d): %s", line.lineNum, line));
+            }
 
-                    if (parts.length == 0 || parts.length > 3) {
-                        throw new IllegalArgumentException(format("Invalid directory mapping (line %d): %s", lineNum, line));
-                    }
+            String hostDir = parts[0].trim();
+            String containerDir = parts.length > 1 ? parts[1].trim() : null;
+            String accessStr = parts.length > 2 ? parts[2].trim().toLowerCase(Locale.US) : null;
+            DirectoryBinding.Access bindingAccess;
 
-                    String hostDir = parts[0].trim();
-                    String containerDir = parts.length > 1 ? parts[1].trim() : null;
-                    String accessStr = parts.length > 2 ? parts[2].trim().toLowerCase(Locale.US) : null;
-                    DirectoryBinding.Access bindingAccess;
+            if (accessStr != null) {
+                bindingAccess = BINDING_ACCESS.get(accessStr);
 
-                    if (accessStr != null) {
-                        bindingAccess = BINDING_ACCESS.get(accessStr);
+                if (bindingAccess == null) {
+                    throw new IllegalArgumentException(format("Invalid directory mapping, unsupported access statement, use r or rw (line %d): %s", line.lineNum, line));
+                }
+            } else if (containerDir != null) {
+                bindingAccess = BINDING_ACCESS.get(containerDir.toLowerCase(Locale.US));
 
-                        if (bindingAccess == null) {
-                            throw new IllegalArgumentException(format("Invalid directory mapping, unsupported access statement, use r or rw (line %d): %s", lineNum, line));
-                        }
-                    } else if (containerDir != null) {
-                        bindingAccess = BINDING_ACCESS.get(containerDir.toLowerCase(Locale.US));
+                if (bindingAccess == null) {
+                    bindingAccess = DirectoryBinding.Access.READ;
+                } else {
+                    containerDir = hostDir;
+                }
+            } else {
+                containerDir = hostDir;
+                bindingAccess = DirectoryBinding.Access.READ;
+            }
 
-                        if (bindingAccess == null) {
-                            bindingAccess = DirectoryBinding.Access.READ;
-                        } else {
-                            containerDir = hostDir;
-                        }
-                    } else {
-                        containerDir = hostDir;
-                        bindingAccess = DirectoryBinding.Access.READ;
-                    }
+            if (!hostDir.startsWith("/") || !containerDir.startsWith("/")) {
+                throw new IllegalArgumentException(format("Invalid directory mapping, use absolute paths (line %d): %s", line.lineNum, line));
+            }
 
-                    if (!hostDir.startsWith("/") || !containerDir.startsWith("/")) {
-                        throw new IllegalArgumentException(format("Invalid directory mapping, use absolute paths (line %d): %s", lineNum, line));
-                    }
+            // Remove any suffix slashes from paths
+            hostDir = hostDir.replaceFirst("/+$", "");
+            containerDir = containerDir.replaceFirst("/+$", "");
 
-                    // Remove any suffix slashes from paths
-                    hostDir = hostDir.replaceFirst("/+$", "");
-                    containerDir = containerDir.replaceFirst("/+$", "");
-
-                    // Check that container dir paths do not overlap
-                    for (String otherContainerDir : containerDirs) {
-                        if (containerDir.startsWith(otherContainerDir) || otherContainerDir.startsWith(containerDir)) {
-                            throw new IllegalArgumentException(format("Container directories can not overlap (line %d): %s, %s", lineNum, line, otherContainerDir));
-                        }
-                    }
-
-                    directoryBindings.add(new DirectoryBinding(hostDir, containerDir, bindingAccess));
+            // Check that container dir paths do not overlap
+            for (String otherContainerDir : containerDirs) {
+                if (containerDir.startsWith(otherContainerDir) || otherContainerDir.startsWith(containerDir)) {
+                    throw new IllegalArgumentException(format("Container directories can not overlap (line %d): %s, %s", line.lineNum, line, otherContainerDir));
                 }
             }
+
+            directoryBindings.add(new DirectoryBinding(hostDir, containerDir, bindingAccess));
         }
 
         return directoryBindings.build();
-    }
-
-    protected static String cleanLine(String line) {
-        int commentIndex = line.indexOf('#');
-
-        return commentIndex >= 0
-                ? line.substring(0, commentIndex).trim()
-                : line.trim();
     }
 
     public static abstract class Descriptor extends hudson.model.Descriptor<Cloud> {

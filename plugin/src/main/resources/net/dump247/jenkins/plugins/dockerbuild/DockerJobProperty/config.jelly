@@ -7,5 +7,9 @@
         <f:entry title="Reset environment for each build" field="resetJob">
             <f:checkbox/>
         </f:entry>
+
+        <f:entry title="Environment Variables" field="environmentVarString">
+            <f:textbox/>
+        </f:entry>
     </f:optionalBlock>
 </j:jelly>

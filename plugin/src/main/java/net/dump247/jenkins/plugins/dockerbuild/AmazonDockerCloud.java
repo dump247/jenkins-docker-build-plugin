@@ -20,6 +20,7 @@ import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Strings.nullToEmpty;
 import static com.google.common.collect.Lists.newArrayList;
 import static java.lang.String.format;
+import static net.dump247.jenkins.plugins.dockerbuild.ConfigUtil.splitConfigLines;
 
 /**
  * Cloud that searches for amazon EC2 instances to run jobs on.
@@ -74,24 +75,18 @@ public class AmazonDockerCloud extends DockerCloud {
     }
 
     private static List<Filter> parseFilterString(String filterString) {
-        int lineNum = 0;
         List<Filter> filters = newArrayList();
 
-        for (String filterLine : filterString.split("\n")) {
-            lineNum += 1;
-            filterLine = cleanLine(filterLine);
+        for (ConfigUtil.ConfigLine filterLine : splitConfigLines(filterString)) {
+            String[] nameValues = filterLine.value.split("=", 2);
+            checkArgument(nameValues.length == 2, format("Filter must be 'name=value[,value,value] (line %d): %s", filterLine.lineNum, filterLine));
 
-            if (filterLine.length() > 0) {
-                String[] nameValues = filterLine.split("=", 2);
-                checkArgument(nameValues.length == 2, format("Filter must be 'name=value[,value,value] (line %d): %s", lineNum, filterLine));
+            String filterName = nameValues[0].trim();
+            checkArgument(filterName.length() > 0, format("Filter must be 'name=value[,value,value] (line %d): %s", filterLine.lineNum, filterLine));
 
-                String filterName = nameValues[0].trim();
-                checkArgument(filterName.length() > 0, format("Filter must be 'name=value[,value,value] (line %d): %s", lineNum, filterLine));
-
-                filters.add(new Filter()
-                        .withName(filterName)
-                        .withValues(nameValues[1].split(",")));
-            }
+            filters.add(new Filter()
+                    .withName(filterName)
+                    .withValues(nameValues[1].split(",")));
         }
 
         return filters;

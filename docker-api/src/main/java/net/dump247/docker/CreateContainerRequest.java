@@ -416,7 +416,7 @@ public class CreateContainerRequest {
         return this;
     }
 
-    private static class EnvSerializer extends JsonSerializer<Map<String, String>> {
+    static class EnvSerializer extends JsonSerializer<Map<String, String>> {
         @Override
         public void serialize(final Map<String, String> value, final JsonGenerator jgen, final SerializerProvider provider) throws IOException {
             if (value == null) {
@@ -436,6 +436,25 @@ public class CreateContainerRequest {
         @Override
         public boolean isEmpty(final Map<String, String> value) {
             return value == null || value.isEmpty();
+        }
+    }
+
+    static class EnvDeserializer extends JsonDeserializer<Map<String, String>> {
+        @Override
+        public Map<String, String> deserialize(JsonParser jp, DeserializationContext ctxt) throws IOException, JsonProcessingException {
+            List<String> varList = new ObjectMapper().readValue(jp, new TypeReference<List<String>>() {
+            });
+            Map<String, String> vars = new HashMap<String, String>();
+
+            for (String var : varList) {
+                String[] parts = var.split("=", 2);
+                String key = parts[0];
+                String value = parts.length > 1 ? parts[1] : "";
+
+                vars.put(key, value);
+            }
+
+            return vars;
         }
     }
 

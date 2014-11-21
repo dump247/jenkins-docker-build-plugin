@@ -1,6 +1,8 @@
 package net.dump247.jenkins.plugins.dockerbuild;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import net.dump247.docker.ContainerConfig;
 import net.dump247.docker.ContainerNotFoundException;
 import net.dump247.docker.ContainerVolume;
 import net.dump247.docker.CreateContainerRequest;
@@ -17,12 +19,14 @@ import net.dump247.docker.StartContainerRequest;
 import org.apache.commons.lang.mutable.MutableInt;
 
 import java.util.List;
-import java.util.logging.Level;
+import java.util.Map;
+import java.util.Objects;
 import java.util.logging.Logger;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.collect.Lists.newArrayListWithCapacity;
+import static com.google.common.collect.Maps.newHashMap;
 import static java.lang.String.format;
 
 /**
@@ -37,16 +41,18 @@ public class DockerJob {
     private final String _jobName;
     private final List<DirectoryBinding> _directoryMappings;
     private final List<String> _launchCommand;
+    private final Map<String, String> _environmentVars;
 
     private final String _jobContainerName;
 
-    public DockerJob(DockerClient dockerClient, String jobName, ImageName jobImage, List<String> launchCommand, boolean resetJob, List<DirectoryBinding> directoryMappings) {
+    public DockerJob(DockerClient dockerClient, String jobName, ImageName jobImage, List<String> launchCommand, boolean resetJob, List<DirectoryBinding> directoryMappings, Map<String, String> environmentVars) {
         _dockerClient = checkNotNull(dockerClient);
         _jobName = checkNotNull(jobName);
         _jobImage = checkNotNull(jobImage);
         _launchCommand = ImmutableList.copyOf(launchCommand);
         _resetJob = resetJob;
         _directoryMappings = ImmutableList.copyOf(directoryMappings);
+        _environmentVars = ImmutableMap.copyOf(environmentVars);
 
         checkArgument(launchCommand.size() > 0, "launchCommand can not be empty");
 
@@ -89,14 +95,9 @@ public class DockerJob {
             } else {
                 LOG.fine(format("Existing job container found: name=%s id=%s", _jobContainerName, containerInfo.getId()));
 
-                if (optionsEqual(containerInfo.getConfig(), containerRequest)) {
-                    LOG.fine(format("Container options have not changed. Checking job image %s", _jobImage));
-                    InspectImageResponse jobImageDetails = _dockerClient.inspectImage(_jobImage.toString());
-
-                    if (jobImageDetails.getId().equals(containerInfo.getImageId())) {
-                        LOG.fine(format("Job image has not changed. Reusing existing container %s", containerInfo.getId()));
-                        return containerInfo.getId();
-                    }
+                if (optionsEqual(containerInfo, containerRequest)) {
+                    LOG.fine(format("Job container configuration has not changed. Reusing existing container %s", containerInfo.getId()));
+                    return containerInfo.getId();
                 }
             }
 
@@ -119,15 +120,39 @@ public class DockerJob {
         return response.getContainerId();
     }
 
-    private boolean optionsEqual(InspectContainerResponse.ContainerConfig config, CreateContainerRequest containerRequest) {
-        return config.isAttachStderr() == containerRequest.isAttachStderr() &&
+    private boolean optionsEqual(InspectContainerResponse containerInfo, CreateContainerRequest containerRequest) throws DockerException {
+        ContainerConfig config = containerInfo.getConfig();
+
+        if (!config.isAttachStderr() == containerRequest.isAttachStderr() &&
                 config.isAttachStdin() == containerRequest.isAttachStdin() &&
                 config.isAttachStdout() == containerRequest.isAttachStdout() &&
                 config.isOpenStdin() == containerRequest.isOpenStdin() &&
                 config.isStdinOnce() == containerRequest.isStdinOnce() &&
                 config.isTty() == containerRequest.isTty() &&
                 config.getCommand().equals(containerRequest.getCommand()) &&
-                config.getVolumes().equals(containerRequest.getVolumes());
+                config.getVolumes().equals(containerRequest.getVolumes())) {
+            return false;
+        }
+
+        LOG.finer(format("Container options have not changed. Checking job image %s", containerRequest.getImage()));
+        InspectImageResponse jobImageDetails = _dockerClient.inspectImage(containerRequest.getImage());
+
+        if (!jobImageDetails.getId().equals(containerInfo.getImageId())) {
+            return false;
+        }
+
+        LOG.finer("Job image has not changed. Checking environment vars");
+        Map<String, String> oldContainerEnv = newHashMap();
+
+        for (Map.Entry<String, String> containerVar : config.getEnvironment().entrySet()) {
+            String imageValue = jobImageDetails.getContainerConfig().getEnvironment().get(containerVar.getKey());
+
+            if (!Objects.equals(containerVar.getValue(), imageValue)) {
+                oldContainerEnv.put(containerVar.getKey(), containerVar.getValue());
+            }
+        }
+
+        return oldContainerEnv.equals(containerRequest.getEnvironment());
     }
 
     private CreateContainerRequest buildContainerRequest() {
@@ -148,6 +173,7 @@ public class DockerJob {
                 .withOpenStdin(true)
                 .withTty(false)
                 .withVolumes(volumes)
+                .withEnvironment(_environmentVars)
                 .withCommand(_launchCommand);
     }
 
