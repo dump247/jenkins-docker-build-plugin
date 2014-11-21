@@ -938,6 +938,10 @@ public class DockerClient {
     }
 
     private ProgressEvent readLastResponse(ClientResponse clientResponse, ProgressListener progress) throws IOException {
+        if (clientResponse.getClientResponseStatus() != ClientResponse.Status.OK) {
+            throw new UniformInterfaceException(clientResponse);
+        }
+
         JsonParser jsonParser = new ObjectMapper().getFactory().createParser(clientResponse.getEntityInputStream());
         JsonToken jsonToken;
         ProgressEvent responseObject = null;
