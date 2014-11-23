@@ -29,17 +29,17 @@ public class DockerComputerLauncher extends ComputerLauncher {
         final DockerJobContainer container = _dockerJob.start(new DockerJob.Listener() {
             @Override
             public void info(String format, Object... args) {
-                logger.format(format, args);
+                logger.format(format + "\n", args);
             }
 
             @Override
             public void warn(String format, Object... args) {
-                logger.format("WARN " + format, args);
+                logger.format("WARN " + format + "\n", args);
             }
 
             @Override
             public void error(String format, Object... args) {
-                listener.error(format, args);
+                listener.error(format + "\n", args);
             }
         });
 

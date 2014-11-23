@@ -189,7 +189,7 @@ public class DockerJob {
                 }
 
                 if (counter.intValue() == 0) {
-                    LOG.info(format("Pulling docker image: image=%s, host=%s", imageName, _dockerClient));
+                    LOG.info(format("Pulling docker image: image=%s, host=%s", imageName, _dockerClient.getEndpoint()));
                     listener.info("### Pulling Docker image %s", imageName);
                 }
 
