@@ -2,6 +2,7 @@ package net.dump247.jenkins.plugins.dockerbuild;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import net.dump247.docker.ContainerAlreadyStartedException;
 import net.dump247.docker.ContainerConfig;
 import net.dump247.docker.ContainerNotFoundException;
 import net.dump247.docker.ContainerVolume;
@@ -21,6 +22,7 @@ import org.apache.commons.lang.mutable.MutableInt;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import static com.google.common.base.Preconditions.checkArgument;
@@ -73,15 +75,25 @@ public class DockerJob {
             String containerId = createContainer(listener);
             DockerClient.ContainerStreams streams = _dockerClient.attachContainerStreams(containerId);
 
-            LOG.fine(format("Starting job container %s", containerId));
-            _dockerClient.startContainer(new StartContainerRequest()
-                    .withContainerId(containerId)
-                    .withBindings(_directoryMappings));
+            try {
+                LOG.fine(format("Starting job container %s", containerId));
+                startContainer(containerId);
+            } catch (ContainerAlreadyStartedException ex) {
+                LOG.log(Level.FINE, format("Container is currently running. Stopping and restarting..."), ex);
+                _dockerClient.stopContainer(containerId);
+                startContainer(containerId);
+            }
 
             return new DockerJobContainer(_dockerClient, containerId, streams, _resetJob);
         } catch (Exception ex) {
             throw new RuntimeException(format("Error starting job container: [image=%s] [endpoint=%s]", containerImage, _dockerClient.getEndpoint()), ex);
         }
+    }
+
+    private void startContainer(String containerId) throws DockerException {
+        _dockerClient.startContainer(new StartContainerRequest()
+                .withContainerId(containerId)
+                .withBindings(_directoryMappings));
     }
 
     private String createContainer(Listener listener) throws DockerException {
