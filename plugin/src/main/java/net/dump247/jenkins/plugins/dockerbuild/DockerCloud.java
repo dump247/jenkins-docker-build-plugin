@@ -261,7 +261,7 @@ public abstract class DockerCloud extends Cloud {
             try {
                 LOG.fine(format("Provisioning node: host=%s capacity=%d", host.host, host.capacity));
                 final DockerSlave slave = new DockerSlave(
-                        format("%s (%s)", imageName, RandomStringUtils.randomAlphanumeric(6).toLowerCase()),
+                        format("%s-%s", jobName, RandomStringUtils.randomAlphanumeric(6).toLowerCase()),
                         "Running job on image " + imageName,
                         "/",
                         nodeLabels,
