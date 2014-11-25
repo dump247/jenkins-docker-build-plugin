@@ -50,15 +50,17 @@ public class DockerComputerLauncher extends ComputerLauncher {
         computer.setChannel(container.getStdout(), container.getStdin(), listener, new Channel.Listener() {
             @Override
             public void onClosed(final Channel channel, final IOException cause) {
-                container.stop();
-
                 try {
-                    if (stderrThread.isAlive()) {
-                        stderrThread.interrupt();
-                        stderrThread.join(1000);
+                    container.stop();
+                } finally {
+                    try {
+                        if (stderrThread.isAlive()) {
+                            stderrThread.interrupt();
+                            stderrThread.join(1000);
+                        }
+                    } catch (InterruptedException ex) {
+                        Thread.currentThread().interrupt();
                     }
-                } catch (InterruptedException ex) {
-                    Thread.currentThread().interrupt();
                 }
             }
         });

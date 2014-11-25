@@ -74,8 +74,8 @@ public class DockerClient {
             throw new IllegalArgumentException(format("Unsupported endpoint scheme. Only http and https are supported: [dockerEndpoint=%s]", dockerEndpoint));
         }
 
-        _httpClient.getProperties().put(ClientConfig.PROPERTY_CONNECT_TIMEOUT, (int) TimeUnit.SECONDS.toMillis(5));
-        _httpClient.getProperties().put(ClientConfig.PROPERTY_READ_TIMEOUT, (int) TimeUnit.SECONDS.toMillis(30));
+        _httpClient.setConnectTimeout((int) TimeUnit.SECONDS.toMillis(5));
+        _httpClient.setReadTimeout((int) TimeUnit.SECONDS.toMillis(30));
 
         if (sslContext == null && !"http".equals(dockerEndpoint.getScheme())) {
             // Attach currently directly uses sockets, so we need to ensure the jersey client and
@@ -680,6 +680,8 @@ public class DockerClient {
                     ? _sslContext.getSocketFactory().createSocket(_apiEndpoint.getHost(), _apiEndpoint.getPort())
                     : new Socket(_apiEndpoint.getHost(), _apiEndpoint.getPort());
 
+            socket.setSoTimeout((int) TimeUnit.SECONDS.toMillis(60));
+
             SocketStreams streams = SocketStreams.create(socket);
             OutputStream socketOut = streams.getOutputStream();
 
@@ -709,11 +711,11 @@ public class DockerClient {
                 prevChar = ch;
             }
 
-            MultiplexedStream multiplexedStream = new MultiplexedStream(socketIn);
+            StreamDemultiplexer demultiplexer = new StreamDemultiplexer(socketIn);
 
             return new ContainerStreams(
-                    new AttachedStream(STDOUT_STREAM, multiplexedStream),
-                    new AttachedStream(STDERR_STREAM, multiplexedStream),
+                    demultiplexer.getStdout(),
+                    demultiplexer.getStderr(),
                     socketOut
             );
         } catch (MalformedURLException ex) {
@@ -978,153 +980,6 @@ public class DockerClient {
 
     private WebResource.Builder api(String path, Object... args) {
         return json(resource(path, args));
-    }
-
-    private static class MultiplexedStream {
-        private final InputStream _dataStream;
-        private final byte[] _headerBuf = new byte[8];
-
-        private boolean _endOfStream;
-        private int _streamClosed;
-        private int _streamNum;
-        private long _messageLen;
-
-        public MultiplexedStream(InputStream dataStream) {
-            _dataStream = dataStream;
-        }
-
-        public synchronized int read(final int streamNum, final byte[] bytes, final int off, final int len) throws IOException {
-            try {
-                readHeader(streamNum);
-
-                if (_endOfStream) {
-                    return -1;
-                }
-
-                int readLen = (int) Math.min(_messageLen, len);
-                int readCount = _dataStream.read(bytes, off, readLen);
-
-                if (readCount < 0) {
-                    this.endOfStream();
-                    return -1;
-                }
-
-                _messageLen -= readCount;
-                return readCount;
-            } catch (IOException ex) {
-                endOfStream();
-                throw ex;
-            }
-        }
-
-        public synchronized int read(final int streamNum) throws IOException {
-            try {
-                readHeader(streamNum);
-
-                if (_endOfStream) {
-                    return -1;
-                }
-
-                int value = _dataStream.read();
-
-                if (value < 0) {
-                    this.endOfStream();
-                    return -1;
-                }
-
-                _messageLen -= 1;
-                return value;
-            } catch (IOException ex) {
-                endOfStream();
-                throw ex;
-            }
-        }
-
-        public synchronized void close(final int streamNum) throws IOException {
-            _streamClosed |= streamNum;
-
-            if (_streamClosed == (STDERR_STREAM | STDOUT_STREAM)) {
-                _dataStream.close();
-            }
-        }
-
-        private void endOfStream() {
-            _endOfStream = true;
-            this.notify();
-        }
-
-        private void readHeader(int streamNum) throws IOException {
-            if ((_streamClosed & streamNum) != 0) {
-                throw new IOException("Stream closed");
-            }
-
-            while (!_endOfStream && _messageLen == 0) {
-                // read 8 bytes header
-                // header is [TYPE, 0, 0, 0, SIZE, SIZE, SIZE, SIZE]
-                // TYPE is 1:stdout, 2:stderr
-                // SIZE is 4-byte, unsigned, big endian length of message payload
-
-                int count = 0;
-
-                while (count < 8) {
-                    int result = _dataStream.read(_headerBuf, count, 8 - count);
-
-                    if (result < 0) {
-                        this.endOfStream();
-                        return;
-                    }
-
-                    count += result;
-                }
-
-                if (_headerBuf[1] != 0 || _headerBuf[2] != 0 || _headerBuf[3] != 0) {
-                    throw new IOException("Unexpected stream header content.");
-                }
-
-                _streamNum = _headerBuf[0];
-
-                // Clear the type because ByteBuffer needs 8 bytes to read the long
-                _headerBuf[0] = 0;
-                ByteBuffer buffer = ByteBuffer.wrap(_headerBuf);
-                buffer.order(ByteOrder.BIG_ENDIAN);
-                _messageLen = buffer.getLong();
-            }
-
-            while (!_endOfStream && _streamNum != streamNum) {
-                this.notify();
-
-                try {
-                    this.wait();
-                } catch (InterruptedException ex) {
-                    Thread.currentThread().interrupt();
-                }
-            }
-        }
-    }
-
-    private static class AttachedStream extends InputStream {
-        private final int _streamNum;
-        private final MultiplexedStream _dataStream;
-
-        public AttachedStream(final int streamNum, final MultiplexedStream dataStream) {
-            _streamNum = streamNum;
-            _dataStream = dataStream;
-        }
-
-        @Override
-        public int read(final byte[] bytes, final int off, final int len) throws IOException {
-            return _dataStream.read(_streamNum, bytes, off, len);
-        }
-
-        @Override
-        public int read() throws IOException {
-            return _dataStream.read(_streamNum);
-        }
-
-        @Override
-        public void close() throws IOException {
-            _dataStream.close(_streamNum);
-        }
     }
 
     private static class AttachStream extends InputStream {
