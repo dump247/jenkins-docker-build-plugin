@@ -4,10 +4,12 @@ import com.google.common.io.ByteStreams;
 import com.google.common.io.Resources;
 import com.trilead.ssh2.SFTPv3Client;
 import com.trilead.ssh2.SFTPv3FileHandle;
+import org.apache.tools.ant.filters.StringInputStream;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.charset.Charset;
 import java.util.logging.Logger;
 
 import static java.lang.String.format;
@@ -15,6 +17,10 @@ import static java.util.logging.Level.WARNING;
 
 public class Sftp {
     private static final Logger LOG = Logger.getLogger(Sftp.class.getName());
+
+    public static void writeString(SFTPv3Client ftp, String content, Charset charset, String path) throws IOException {
+        writeFile(ftp, new StringInputStream(content, charset.name()), path);
+    }
 
     public static void writeResource(SFTPv3Client ftp, Class type, String name, String path) throws IOException {
         writeFile(ftp, Resources.getResource(type, name).openStream(), path);

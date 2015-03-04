@@ -28,6 +28,10 @@
         <f:textarea/>
     </f:entry>
 
+    <f:entry title="Pre-Launch Script" field="slaveInitScript">
+        <f:textarea/>
+    </f:entry>
+
     <f:section title="Advanced Options">
         <f:advanced>
             <f:entry title="SSH Port" field="sshPort" description="Standard SSH port is 22">

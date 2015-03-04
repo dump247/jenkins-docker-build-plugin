@@ -4,6 +4,9 @@ set -o errexit # Exit if any command fials
 set -o nounset # Don't reference variables that have not been set
 
 DIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
+
+[ -f "${DIR}/init_slave.sh" ] && /bin/bash "${DIR}/init_slave.sh"
+
 SLAVE_JAR_PATH="${DIR}/slave.jar"
 
 source "${DIR}/properties.sh"

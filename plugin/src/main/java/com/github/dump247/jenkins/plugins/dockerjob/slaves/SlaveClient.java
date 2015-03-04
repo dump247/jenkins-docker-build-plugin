@@ -1,6 +1,7 @@
 package com.github.dump247.jenkins.plugins.dockerjob.slaves;
 
 import com.cloudbees.plugins.credentials.common.StandardUsernameCredentials;
+import com.google.common.base.Charsets;
 import com.google.common.net.HostAndPort;
 import com.google.inject.Provider;
 import com.trilead.ssh2.Connection;
@@ -18,9 +19,11 @@ import java.util.logging.Logger;
 
 import static com.github.dump247.jenkins.plugins.dockerjob.slaves.Sftp.writeFile;
 import static com.github.dump247.jenkins.plugins.dockerjob.slaves.Sftp.writeResource;
+import static com.github.dump247.jenkins.plugins.dockerjob.slaves.Sftp.writeString;
 import static com.github.dump247.jenkins.plugins.dockerjob.slaves.Ssh.communicateSuccess;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Strings.isNullOrEmpty;
 import static com.google.common.collect.Lists.newArrayList;
 import static java.lang.String.format;
 import static java.util.Arrays.asList;
@@ -73,7 +76,7 @@ public class SlaveClient {
         _connections.clear();
     }
 
-    public String initialize(URL slaveJarUrl) throws IOException {
+    public String initialize(URL slaveJarUrl, String slaveInitScript) throws IOException {
         Connection connection = null;
         SFTPv3Client ftp = null;
 
@@ -95,6 +98,14 @@ public class SlaveClient {
             writeResource(ftp, getClass(), "create_slave.py", "/var/lib/jenkins-docker/create_slave.py");
             writeResource(ftp, getClass(), "launch_slave.sh", "/var/lib/jenkins-docker/slave/launch_slave.sh");
             writeFile(ftp, slaveJarUrl.openStream(), "/var/lib/jenkins-docker/slave/slave.jar");
+
+            if (slaveInitScript.trim().length() > 0) {
+                if (slaveInitScript.charAt(slaveInitScript.length() - 1) != '\n') {
+                    slaveInitScript = slaveInitScript + "\n";
+                }
+
+                writeString(ftp, slaveInitScript, Charsets.UTF_8, "/var/lib/jenkins-docker/slave/init_slave.sh");
+            }
 
             return initializeResult;
         } finally {

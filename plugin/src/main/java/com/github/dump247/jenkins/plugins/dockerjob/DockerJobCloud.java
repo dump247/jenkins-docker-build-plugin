@@ -105,6 +105,7 @@ public class DockerJobCloud extends Cloud {
     private final String _labelString;
     private final String _requiredLabelString;
     private final String _directoryMappingString;
+    private final String _slaveInitScript;
 
     private transient Jenkins _jenkins;
     private transient Instant _nextHostsRefresh;
@@ -119,7 +120,8 @@ public class DockerJobCloud extends Cloud {
     public DockerJobCloud(String name, DockerHostProvider hostProvider, int sshPort,
                           String credentialsId, int maxJobsPerHost,
                           String labelString, String requiredLabelString,
-                          String directoryMappingString) {
+                          String directoryMappingString,
+                          String slaveInitScript) {
         super(name);
 
         _hostProvider = checkNotNull(hostProvider);
@@ -129,6 +131,7 @@ public class DockerJobCloud extends Cloud {
         _labelString = nullToEmpty(labelString);
         _requiredLabelString = nullToEmpty(requiredLabelString);
         _directoryMappingString = nullToEmpty(directoryMappingString);
+        _slaveInitScript = nullToEmpty(slaveInitScript);
 
         checkArgument(sshPort >= 1 && sshPort <= 65535);
         checkArgument(maxJobsPerHost > 0);
@@ -173,6 +176,10 @@ public class DockerJobCloud extends Cloud {
 
     public String getDirectoryMappingString() {
         return _directoryMappingString;
+    }
+
+    public String getSlaveInitScript() {
+        return _slaveInitScript;
     }
 
     @Override
@@ -353,7 +360,9 @@ public class DockerJobCloud extends Cloud {
                                 SlaveClient client = null;
                                 try {
                                     client = new SlaveClient(targetHost, _credentialsProvider);
-                                    String description = client.initialize(_jenkins.getJnlpJars("slave.jar").getURL());
+                                    String description = client.initialize(
+                                            _jenkins.getJnlpJars("slave.jar").getURL(),
+                                            nullToEmpty(_slaveInitScript));
                                     return HostState.success(targetHost, description, client);
                                 } catch (Exception ex) {
                                     if (client != null) {
