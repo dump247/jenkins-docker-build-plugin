@@ -32,9 +32,6 @@ import static org.joda.time.Duration.standardSeconds;
  * Client that connects to a slave host machine and launches slave docker containers.
  */
 public class SlaveClient {
-    /**
-     * 10 is selected since it is the default for openssh.
-     */
     private static final int DEFAULT_MAX_SESSIONS = 5;
     private static final Logger LOG = Logger.getLogger(SlaveClient.class.getName());
 
