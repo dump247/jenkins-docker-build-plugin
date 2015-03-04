@@ -1,0 +1,15 @@
+<p>
+    Map directories from the host machine into the slave container. The container directory does
+    not need to exist. If it does, the mapping will override the existing directory.
+</p>
+
+<p>
+    The format is <em>/host:/slave[:access]</em>, where <em>access</em> determines what access the
+    container has to the directory. The value can be <em>ro</em> for read-only or <em>rw</em> for
+    read and write access.
+</p>
+
+<p>
+    Each line contains a separate directory mapping. Empty lines and lines that start with
+    <em>#</em> are ignored.
+</p>
