@@ -70,7 +70,9 @@ public class DockerJobComputer extends SlaveComputer {
     }
 
     public boolean hasCompletedJob(Duration launchTimeout) {
-        return hasCompletedJob() || (!hasAcceptedJob() && _nodeLaunchTimeMs.plus(launchTimeout).isBefore(Instant.now()));
+        return hasCompletedJob() ||
+                (!hasAcceptedJob() && _nodeLaunchTimeMs.plus(launchTimeout).isBefore(Instant.now())) ||
+                (hasAcceptedJob() && isOffline());
     }
 
     public void terminate() {

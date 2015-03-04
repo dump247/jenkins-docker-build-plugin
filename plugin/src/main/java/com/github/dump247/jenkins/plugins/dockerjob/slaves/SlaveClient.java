@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.URL;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.logging.Logger;
@@ -23,6 +24,7 @@ import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.collect.Lists.newArrayList;
 import static java.lang.String.format;
 import static java.util.Arrays.asList;
+import static java.util.logging.Level.FINE;
 import static java.util.logging.Level.FINER;
 import static org.joda.time.Duration.standardSeconds;
 
@@ -33,7 +35,7 @@ public class SlaveClient {
     /**
      * 10 is selected since it is the default for openssh.
      */
-    private static final int DEFAULT_MAX_SESSIONS = 10;
+    private static final int DEFAULT_MAX_SESSIONS = 5;
     private static final Logger LOG = Logger.getLogger(SlaveClient.class.getName());
 
     private final HostAndPort _host;
@@ -75,11 +77,15 @@ public class SlaveClient {
     }
 
     public String initialize(URL slaveJarUrl) throws IOException {
-        Connection connection = Ssh.connect(_host, _credentialsProvider.get());
+        Connection connection = null;
+        SFTPv3Client ftp = null;
 
-        SFTPv3Client ftp = new SFTPv3Client(connection);
+        LOG.log(FINE, "Initializing {0}", _host);
 
         try {
+            connection = Ssh.connect(_host, _credentialsProvider.get());
+            ftp = new SFTPv3Client(connection);
+
             writeResource(ftp, getClass(), "init_host.sh", "/var/lib/jenkins-docker/init_host.sh");
 
             // Run script to initialize the host (create directories, check for dependencies, etc)
@@ -95,7 +101,13 @@ public class SlaveClient {
 
             return initializeResult;
         } finally {
-            ftp.close();
+            if (ftp != null) {
+                ftp.close();
+            }
+
+            if (connection != null) {
+                connection.close();
+            }
         }
     }
 
@@ -145,20 +157,27 @@ public class SlaveClient {
         }
 
         if (selected == null) {
+            LOG.log(FINE, "Opening connection to {0}", _host);
             selected = new SessionCount(Ssh.connect(_host, _credentialsProvider.get()));
             _connections.add(selected);
         }
 
+        LOG.log(FINER, "Opening session to {0}", _host);
         Session session = selected.connection.openSession();
         selected.sessionCount += 1;
         return new SlaveConnection(selected.connection, session);
     }
 
     private synchronized void closeSession(SlaveConnection session) {
-        LOG.log(FINER, "Closing SSH session");
         int emptyConnections = 0;
 
-        for (SessionCount count : _connections) {
+        LOG.log(FINER, "Closing session to {0}", _host);
+        session._session.close();
+
+        Iterator<SessionCount> iter = _connections.iterator();
+        while (iter.hasNext()) {
+            SessionCount count = iter.next();
+
             if (count.connection == session._connection) {
                 count.sessionCount -= 1;
             }
@@ -169,12 +188,12 @@ public class SlaveClient {
                 emptyConnections += 1;
 
                 if (emptyConnections > 1) {
+                    LOG.log(FINE, "Closing connection to {0}", _host);
                     count.connection.close();
+                    iter.remove();
                 }
             }
         }
-
-        session._session.close();
     }
 
     public class SlaveConnection {
