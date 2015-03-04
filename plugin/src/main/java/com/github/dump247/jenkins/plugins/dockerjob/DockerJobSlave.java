@@ -7,7 +7,6 @@ import hudson.model.Descriptor;
 import hudson.model.Node;
 import hudson.model.Slave;
 import hudson.model.labels.LabelAtom;
-import hudson.model.queue.MappingWorksheet;
 import hudson.remoting.VirtualChannel;
 import hudson.slaves.EphemeralNode;
 import hudson.slaves.NodeProperty;
@@ -19,7 +18,6 @@ import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import static com.google.common.base.Preconditions.checkNotNull;
 import static java.lang.String.format;
 
 /**
