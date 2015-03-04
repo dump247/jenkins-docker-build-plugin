@@ -1,0 +1,14 @@
+<p>
+    Labels for the nodes in this cloud, with the additional property that the label MUST appear in
+    the job's condition label for the job to run in the cloud. This enforces that the cloud must
+    be explicitly selected by the job, rather than implicitly selected.
+</p>
+
+<p>
+    For example, a cloud for slaves running in a QA environment could have a required label of
+    <code>env/qa</code>. If a job does not include the <code>env/qa</code> in it's condition string,
+    the job will not be run in the QA environment. A job with the condition string
+    <code>foo &amp;&amp; bar</code> would never run in the QA cloud. However, a job with the
+    condition string <code>foo &amp;&amp; bar &amp;&amp; env/qa</code> could (since it includes the
+    label <code>env/qa</code>), assuming the other parts of the expression match.
+</p>

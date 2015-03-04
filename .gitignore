@@ -11,3 +11,6 @@ target/
 # IntelliJ #
 *.iml
 .idea/
+
+# Vagrant
+.vagrant/

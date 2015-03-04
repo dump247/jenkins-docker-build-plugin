@@ -1,0 +1,19 @@
+<j:jelly xmlns:j="jelly:core"
+         xmlns:f="/lib/form">
+    <f:optionalBlock name="buildEnvironmentEnabled"
+                     title="Docker Build Environment"
+                     inline="true"
+                     checked="${instance.buildEnvironmentEnabled}">
+        <f:entry title="Reset environment for each build" field="resetJob">
+            <f:checkbox/>
+        </f:entry>
+
+        <f:entry title="Image" field="imageName">
+            <f:textbox/>
+        </f:entry>
+
+        <f:entry title="Environment Variables" field="environmentVarString">
+            <f:textarea/>
+        </f:entry>
+    </f:optionalBlock>
+</j:jelly>
