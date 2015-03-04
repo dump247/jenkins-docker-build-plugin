@@ -9,7 +9,7 @@ import time
 import argparse
 import json
 import socket
-import select
+import threading
 import re
 import os
 
@@ -107,24 +107,54 @@ def container_changed(docker_client, container_info, create_opts):
 
 
 def create_server(address, port):
-    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-
     while True:
+        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        server.settimeout(10.0)
+
         try:
             server.bind((address, port))
+            server.listen(1)
             break
         except OSError as ex:
             # retry if address already in use
             if ex.errno != 98:
                 raise
 
+            server.close()
             time.sleep(0.25)
 
-    server.listen(1)
-    server.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-    server.settimeout(10.0)
     return server
+
+
+def copy_socket_to_stdout(sock):
+    try:
+        while True:
+            data = sock.recv(4096)
+
+            if len(data) <= 0:
+                break
+
+            sys.stdout.buffer.write(data)
+            sys.stdout.buffer.flush()
+    finally:
+        sock.shutdown(socket.SHUT_RD)
+        sys.stdout.close()
+
+
+def copy_stdin_to_socket(sock):
+    try:
+        while True:
+            data = sys.stdin.buffer.read1(4096)
+
+            if len(data) <= 0:
+                break
+
+            sock.sendall(data)
+    finally:
+        sock.shutdown(socket.SHUT_WR)
+        sys.stdin.close()
 
 
 def run_server(server_socket):
@@ -132,41 +162,16 @@ def run_server(server_socket):
     slave, slave_addr = server_socket.accept()
     server_socket.close()
 
-    slave.setblocking(0)
     slave.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
-    epoll = select.epoll()
-    epoll.register(slave, select.EPOLLIN | select.EPOLLHUP)
-    epoll.register(sys.stdin, select.EPOLLIN | select.EPOLLHUP)
-
     try:
-        done = False
+        th = threading.Thread(target=lambda: copy_stdin_to_socket(slave))
+        th.daemon = True
+        th.start()
 
-        while not done:
-            events = epoll.poll(5)
-
-            for fileno, event in events:
-                if fileno == slave.fileno():
-                    if event & select.EPOLLIN:
-                        data = slave.recv(4096)
-
-                        if len(data) > 0:
-                            sys.stdout.buffer.write(data)
-                            sys.stdout.buffer.flush()
-                        else:
-                            done = True
-
-                    if event & select.EPOLLHUP:
-                        message('slave done')
-                elif fileno == sys.stdin.fileno():
-                    if event & select.EPOLLIN:
-                        data = sys.stdin.buffer.read1(4096)
-                        slave.sendall(data)
-
-                    if event & select.EPOLLHUP:
-                        done = True
+        copy_socket_to_stdout(slave)
+        th.join(5.0)
     finally:
-        epoll.close()
         sys.stdin.close()
         sys.stdout.close()
         slave.close()

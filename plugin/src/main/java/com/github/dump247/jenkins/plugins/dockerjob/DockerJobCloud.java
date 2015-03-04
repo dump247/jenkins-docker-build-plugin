@@ -187,7 +187,7 @@ public class DockerJobCloud extends Cloud {
         return validateJob(label).isPresent();
     }
 
-    public ProvisionResult provisionJob(String jobName, AbstractProject job, MappingWorksheet.WorkChunk task) throws Exception {
+    public ProvisionResult provisionJob(final String jobName, AbstractProject job, MappingWorksheet.WorkChunk task) throws Exception {
         JobValidationResult result = validateJob(task.assignedLabel).orNull();
 
         if (result == null) {
@@ -238,7 +238,7 @@ public class DockerJobCloud extends Cloud {
                     Computer slaveComputer = slave.toComputer();
                     slaveComputer.connect(false).get();
                 } catch (Exception ex) {
-                    LOG.log(SEVERE, format("Error provisioning docker slave: image=%s endpoint=%s", imageName, host.getHost()), ex);
+                    LOG.log(SEVERE, format("Error provisioning docker slave: job=%s image=%s endpoint=%s", jobName, imageName, host.getHost()), ex);
                     throw Throwables.propagate(ex);
                 }
             }

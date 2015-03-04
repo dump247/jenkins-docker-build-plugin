@@ -35,6 +35,7 @@ public class Ssh {
 
     public static Connection connect(HostAndPort host, StandardUsernameCredentials credentials) throws IOException {
         Connection connection = new Connection(host.getHostText(), host.getPortOrDefault(22));
+        connection.setTCPNoDelay(true);
         connection.connect();
 
         try {

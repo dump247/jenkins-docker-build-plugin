@@ -14,10 +14,13 @@ import hudson.slaves.SlaveComputer;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.InterruptedIOException;
 import java.io.PrintStream;
 import java.util.logging.Logger;
 
+import static java.util.logging.Level.FINE;
 import static java.util.logging.Level.FINER;
+import static java.util.logging.Level.INFO;
 import static java.util.logging.Level.WARNING;
 
 public class DockerJobComputerLauncher extends ComputerLauncher {
@@ -37,21 +40,34 @@ public class DockerJobComputerLauncher extends ComputerLauncher {
 
     @Override
     public void launch(SlaveComputer computer, final TaskListener listener) throws IOException, InterruptedException {
+        LOG.log(FINE, "Starting slave for {0}", _options.getName());
         final SlaveClient.SlaveConnection connection = _client.createSlave(_options);
 
         final Thread logReader = new Thread(new Runnable() {
             @Override
             public void run() {
+                BufferedReader reader = null;
+
                 try {
-                    BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getLog(), Charsets.UTF_8));
+                    reader = new BufferedReader(new InputStreamReader(connection.getLog(), Charsets.UTF_8));
                     PrintStream logger = listener.getLogger();
                     String line;
 
                     while ((line = reader.readLine()) != null) {
                         logger.println(line);
                     }
+                } catch (InterruptedIOException ex) {
+                    LOG.log(FINER, "Log stream read thread cancelled for job " + _options.getName());
                 } catch (Throwable ex) {
                     LOG.log(WARNING, "Error reading log stream for job " + _options.getName(), ex);
+                } finally {
+                    if (reader != null) {
+                        try {
+                            reader.close();
+                        } catch (IOException ex) {
+                            LOG.log(FINER, "Error closing log stream for job " + _options.getName(), ex);
+                        }
+                    }
                 }
             }
         });
@@ -63,14 +79,16 @@ public class DockerJobComputerLauncher extends ComputerLauncher {
             computer.setChannel(connection.getOutput(), connection.getInput(), listener, new Channel.Listener() {
                 @Override
                 public void onClosed(Channel channel, IOException cause) {
+                    LOG.log(FINE, "Channel closed for {0}", _options.getName());
+
+                    connection.close();
+
                     try {
                         logReader.interrupt();
                         logReader.join(5000);
                     } catch (Throwable ex) {
                         LOG.log(FINER, "Error stopping log reading thread for job " + _options.getName(), ex);
                     }
-
-                    connection.close();
                 }
             });
         } catch (IOException ex) {
