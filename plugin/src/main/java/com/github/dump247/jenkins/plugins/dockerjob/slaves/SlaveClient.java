@@ -120,7 +120,7 @@ public class SlaveClient {
     }
 
     public SlaveConnection createSlave(SlaveOptions options) throws IOException {
-        List<String> command = asList("python3", "/var/lib/jenkins-docker/create_slave.py",
+        List<String> command = newArrayList("python3", "/var/lib/jenkins-docker/create_slave.py",
                 "--name", options.getName(),
                 "--image", options.getImage());
 
