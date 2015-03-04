@@ -18,7 +18,9 @@ import java.util.logging.Logger;
 import static com.github.dump247.jenkins.plugins.dockerjob.slaves.Sftp.writeFile;
 import static com.github.dump247.jenkins.plugins.dockerjob.slaves.Sftp.writeResource;
 import static com.github.dump247.jenkins.plugins.dockerjob.slaves.Ssh.communicateSuccess;
+import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.collect.Lists.newArrayList;
 import static java.lang.String.format;
 import static java.util.Arrays.asList;
 import static java.util.logging.Level.FINER;
@@ -28,16 +30,32 @@ import static org.joda.time.Duration.standardSeconds;
  * Client that connects to a slave host machine and launches slave docker containers.
  */
 public class SlaveClient {
+    /**
+     * 10 is selected since it is the default for openssh.
+     */
+    private static final int DEFAULT_MAX_SESSIONS = 10;
     private static final Logger LOG = Logger.getLogger(SlaveClient.class.getName());
 
     private final HostAndPort _host;
     private final Provider<StandardUsernameCredentials> _credentialsProvider;
 
-    private Connection _connection;
+    /**
+     * Maximum number of sessions to open on a connection before creating a new connection.
+     */
+    private final int _maxSessions;
+
+    private List<SessionCount> _connections = newArrayList();
 
     public SlaveClient(HostAndPort host, Provider<StandardUsernameCredentials> credentialsProvider) {
+        this(host, credentialsProvider, DEFAULT_MAX_SESSIONS);
+    }
+
+    public SlaveClient(HostAndPort host, Provider<StandardUsernameCredentials> credentialsProvider, int maxSessions) {
         _host = checkNotNull(host);
         _credentialsProvider = checkNotNull(credentialsProvider);
+        _maxSessions = maxSessions;
+
+        checkArgument(maxSessions > 0);
     }
 
     public HostAndPort getHost() {
@@ -48,29 +66,25 @@ public class SlaveClient {
         return _credentialsProvider;
     }
 
-    public void connect() throws IOException {
-        if (_connection == null) {
-            _connection = Ssh.connect(_host, _credentialsProvider.get());
-        }
-    }
-
     public void close() {
-        if (_connection != null) {
-            _connection.close();
+        for (SessionCount count : _connections) {
+            count.connection.close();
         }
+
+        _connections.clear();
     }
 
     public String initialize(URL slaveJarUrl) throws IOException {
-        connect();
+        Connection connection = Ssh.connect(_host, _credentialsProvider.get());
 
-        SFTPv3Client ftp = new SFTPv3Client(_connection);
+        SFTPv3Client ftp = new SFTPv3Client(connection);
 
         try {
             writeResource(ftp, getClass(), "init_host.sh", "/var/lib/jenkins-docker/init_host.sh");
 
             // Run script to initialize the host (create directories, check for dependencies, etc)
             String initializeResult = communicateSuccess(
-                    _connection,
+                    connection,
                     standardSeconds(1),
                     "/bin/bash", "/var/lib/jenkins-docker/init_host.sh");
 
@@ -105,14 +119,78 @@ public class SlaveClient {
         }
 
         LOG.log(FINER, "Running: {0}", command);
-        return new SlaveConnection(Ssh.execute(_connection, command));
+        String commandString = Ssh.quoteCommand(command);
+        SlaveConnection session = openSession();
+
+        try {
+            session._session.execCommand(commandString);
+            return session;
+        } catch (IOException ex) {
+            closeSession(session);
+            throw ex;
+        }
     }
 
-    public static class SlaveConnection {
-        private final Session _session;
+    private synchronized SlaveConnection openSession() throws IOException {
+        SessionCount selected = null;
 
-        public SlaveConnection(Session session) {
+        // Find connection with most sessions, but still less than max. This maximizes the number
+        // of sessions per connection to minimize open connections.
+        for (SessionCount count : _connections) {
+            if (count.sessionCount < _maxSessions) {
+                if (selected == null || selected.sessionCount < count.sessionCount) {
+                    selected = count;
+                }
+            }
+        }
+
+        if (selected == null) {
+            selected = new SessionCount(Ssh.connect(_host, _credentialsProvider.get()));
+            _connections.add(selected);
+        }
+
+        Session session = selected.connection.openSession();
+        selected.sessionCount += 1;
+        return new SlaveConnection(selected.connection, session);
+    }
+
+    private synchronized void closeSession(SlaveConnection session) {
+        LOG.log(FINER, "Closing SSH session");
+        int emptyConnections = 0;
+
+        for (SessionCount count : _connections) {
+            if (count.connection == session._connection) {
+                count.sessionCount -= 1;
+            }
+
+            // Close the second connection that has no active sessions and any empty connection
+            // after that. Keep one connection with no sessions for additional capacity.
+            if (count.sessionCount == 0) {
+                emptyConnections += 1;
+
+                if (emptyConnections > 1) {
+                    count.connection.close();
+                }
+            }
+        }
+
+        session._session.close();
+    }
+
+    public class SlaveConnection {
+        private final Session _session;
+        private final Connection _connection;
+        private boolean _closed;
+
+        public SlaveConnection(Connection connection, Session session) {
+            _connection = connection;
             _session = session;
+        }
+
+        @Override
+        protected void finalize() throws Throwable {
+            super.finalize();
+            close();
         }
 
         public InputStream getOutput() {
@@ -127,9 +205,20 @@ public class SlaveClient {
             return _session.getStderr();
         }
 
-        public void close() {
-            LOG.log(FINER, "Closing SSH session");
-            _session.close();
+        public synchronized void close() {
+            if (!_closed) {
+                _closed = true;
+                closeSession(this);
+            }
+        }
+    }
+
+    private static class SessionCount {
+        public final Connection connection;
+        public int sessionCount;
+
+        public SessionCount(Connection connection) {
+            this.connection = connection;
         }
     }
 }

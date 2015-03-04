@@ -66,30 +66,6 @@ public class Ssh {
         return connection;
     }
 
-    public static Session execute(Connection connection, String... command) throws IOException {
-        return execute(connection, asList(command));
-    }
-
-    public static Session execute(Connection connection, List<String> command) throws IOException {
-        checkNotNull(connection);
-        checkNotNull(command);
-
-        Session session = null;
-
-        try {
-            String commandString = quoteCommand(command);
-            session = connection.openSession();
-            session.execCommand(commandString);
-            return session;
-        } catch (IOException ex) {
-            if (session != null) {
-                session.close();
-            }
-
-            throw ex;
-        }
-    }
-
     public static CommunicateResult communicate(Connection connection, Duration timeout, String... command) throws IOException {
         checkNotNull(connection);
         checkNotNull(timeout);
@@ -146,7 +122,7 @@ public class Ssh {
         return value;
     }
 
-    private static String quoteCommand(List<String> command) {
+    public static String quoteCommand(List<String> command) {
         StringBuilder result = new StringBuilder();
 
         for (String c : command) {
