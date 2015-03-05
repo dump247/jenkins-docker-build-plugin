@@ -397,6 +397,7 @@ public class DockerJobCloud extends Cloud {
                 _hosts = newHosts;
                 _hostProviderError = null;
             } catch (Throwable ex) {
+                LOG.log(WARNING, "Error listing cloud hosts", ex);
                 _hosts = newHashMap();
                 _hostProviderError = ex;
             }
