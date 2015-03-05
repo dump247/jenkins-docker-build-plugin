@@ -23,10 +23,8 @@ import static com.github.dump247.jenkins.plugins.dockerjob.slaves.Sftp.writeStri
 import static com.github.dump247.jenkins.plugins.dockerjob.slaves.Ssh.communicateSuccess;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
-import static com.google.common.base.Strings.isNullOrEmpty;
 import static com.google.common.collect.Lists.newArrayList;
 import static java.lang.String.format;
-import static java.util.Arrays.asList;
 import static java.util.logging.Level.FINE;
 import static java.util.logging.Level.FINER;
 import static org.joda.time.Duration.standardSeconds;
