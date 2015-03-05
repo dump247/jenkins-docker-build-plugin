@@ -15,5 +15,6 @@
 
     <modules>
         <module>plugin</module>
+        <module>aws-plugin</module>
     </modules>
 </project>
