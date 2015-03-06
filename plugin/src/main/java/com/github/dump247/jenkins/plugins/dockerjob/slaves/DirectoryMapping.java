@@ -57,6 +57,6 @@ public class DirectoryMapping {
         return new DirectoryMapping(
                 match.group(1),
                 match.group(2),
-                match.group(3).equals("rw") ? Access.READ_WRITE : Access.READ);
+                "rw".equals(match.group(3)) ? Access.READ_WRITE : Access.READ);
     }
 }
