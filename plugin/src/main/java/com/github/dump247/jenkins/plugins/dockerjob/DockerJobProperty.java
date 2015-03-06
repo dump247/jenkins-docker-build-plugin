@@ -1,6 +1,5 @@
 package com.github.dump247.jenkins.plugins.dockerjob;
 
-import com.github.dump247.jenkins.plugins.dockerjob.util.ConfigUtil;
 import com.google.common.collect.ImmutableMap;
 import hudson.Extension;
 import hudson.model.AbstractProject;
@@ -15,7 +14,6 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import static com.github.dump247.jenkins.plugins.dockerjob.util.ConfigUtil.parseEnvVars;
-import static com.github.dump247.jenkins.plugins.dockerjob.util.ConfigUtil.splitConfigLines;
 import static java.lang.String.format;
 
 /**

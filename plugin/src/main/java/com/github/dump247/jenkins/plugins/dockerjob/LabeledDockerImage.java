@@ -1,6 +1,5 @@
 package com.github.dump247.jenkins.plugins.dockerjob;
 
-import antlr.ANTLRException;
 import hudson.Extension;
 import hudson.model.Describable;
 import hudson.model.Label;
@@ -35,6 +34,8 @@ public class LabeledDockerImage implements Describable<LabeledDockerImage> {
         this.imageName = imageName;
         this.labelString = labelString;
         this.environmentVarString = environmentVarString;
+
+        this.readResolve();
     }
 
     protected Object readResolve() {

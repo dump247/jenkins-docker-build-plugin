@@ -66,11 +66,9 @@ import static com.google.common.collect.Lists.newArrayList;
 import static com.google.common.collect.Lists.newArrayListWithCapacity;
 import static com.google.common.collect.Maps.newHashMap;
 import static java.lang.String.format;
-import static java.util.Collections.lastIndexOfSubList;
 import static java.util.Collections.unmodifiableSet;
 import static java.util.logging.Level.FINE;
 import static java.util.logging.Level.FINER;
-import static java.util.logging.Level.INFO;
 import static java.util.logging.Level.SEVERE;
 import static java.util.logging.Level.WARNING;
 
@@ -208,9 +206,10 @@ public class DockerJobCloud extends Cloud {
 
         if (jobConfig != null) {
             resetJob = jobConfig.resetJobEnabled();
-            jobEnv = ImmutableMap.<String, String>builder()
-                    .putAll(jobConfig.getEnvironmentVars())
-                    .putAll(jobEnv).build();
+
+            Map<String, String> newEnv = newHashMap(jobEnv);
+            newEnv.putAll(jobConfig.getEnvironmentVars());
+            jobEnv = ImmutableMap.copyOf(newEnv);
         }
 
         if (isNullOrEmpty(imageName)) {
