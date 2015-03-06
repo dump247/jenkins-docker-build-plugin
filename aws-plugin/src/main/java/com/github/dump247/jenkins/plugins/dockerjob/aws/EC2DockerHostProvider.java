@@ -48,17 +48,15 @@ public class EC2DockerHostProvider extends DockerHostProvider {
     private final String _filterString;
     private final String _regionString;
     private final boolean _usePublicIP;
-    private final int _interfaceIndex;
 
     private transient List<Filter> _filters;
     private transient List<AmazonEC2> _amazonEC2;
 
     @DataBoundConstructor
-    public EC2DockerHostProvider(String filterString, String regionString, boolean usePublicIP, int interfaceIndex) {
+    public EC2DockerHostProvider(String filterString, String regionString, boolean usePublicIP) {
         _filterString = filterString;
         _regionString = regionString;
         _usePublicIP = usePublicIP;
-        _interfaceIndex = interfaceIndex;
         readResolve();
     }
 
@@ -86,10 +84,6 @@ public class EC2DockerHostProvider extends DockerHostProvider {
 
     public boolean isUsePublicIP() {
         return _usePublicIP;
-    }
-
-    public int getInterfaceIndex() {
-        return _interfaceIndex;
     }
 
     @Override
@@ -126,10 +120,10 @@ public class EC2DockerHostProvider extends DockerHostProvider {
                     if ("running".equalsIgnoreCase(instance.getState().getName())) {
                         List<InstanceNetworkInterface> networkInterfaces = instance.getNetworkInterfaces();
 
-                        if (_interfaceIndex >= networkInterfaces.size()) {
-                            LOG.log(WARNING, "No interface {0} found on instance {1}", new Object[]{_interfaceIndex, instance.getInstanceId()});
+                        if (networkInterfaces.size() < 1) {
+                            LOG.log(WARNING, "No network interface found on instance {0}", instance.getInstanceId());
                         } else {
-                            InstanceNetworkInterface nic = networkInterfaces.get(_interfaceIndex);
+                            InstanceNetworkInterface nic = networkInterfaces.get(0);
                             String ip;
 
                             if (_usePublicIP) {

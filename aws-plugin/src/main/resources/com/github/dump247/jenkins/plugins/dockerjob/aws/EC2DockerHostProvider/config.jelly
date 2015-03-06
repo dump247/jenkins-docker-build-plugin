@@ -14,8 +14,4 @@
         <f:booleanRadio true="Public IP" false="Private IP"/>
     </f:entry>
 
-    <f:entry title="Interface" field="interfaceIndex">
-        <f:number default="0"/>
-    </f:entry>
-
 </j:jelly>
