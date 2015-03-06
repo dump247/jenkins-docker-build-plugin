@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import static com.github.dump247.jenkins.plugins.dockerjob.util.ConfigUtil.parseEnvVars;
 import static com.github.dump247.jenkins.plugins.dockerjob.util.ConfigUtil.splitConfigLines;
 import static java.lang.String.format;
 
@@ -65,24 +66,6 @@ public class DockerJobProperty extends JobProperty<AbstractProject<?, ?>> {
 
     public Map<String, String> getEnvironmentVars() {
         return _environmentVars;
-    }
-
-    private static Map<String, String> parseEnvVars(String content) {
-        ImmutableMap.Builder<String, String> vars = ImmutableMap.builder();
-
-        for (ConfigUtil.ConfigLine line : splitConfigLines(content)) {
-            String[] parts = line.value.split("=", 2);
-            String name = parts[0].trim();
-            String value = parts.length > 1 ? parts[1].trim() : "";
-
-            if (!name.matches("^[a-zA-Z_][a-zA-Z_0-9]*$")) {
-                throw new IllegalArgumentException(format("Environment variable name is invalid (line %d): %s", line.lineNum, line));
-            }
-
-            vars.put(name, value);
-        }
-
-        return vars.build();
     }
 
     @Extension

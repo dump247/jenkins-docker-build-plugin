@@ -10,8 +10,10 @@ import jenkins.model.Jenkins;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.QueryParameter;
 
+import java.util.Map;
 import java.util.Set;
 
+import static com.github.dump247.jenkins.plugins.dockerjob.util.ConfigUtil.parseEnvVars;
 import static com.google.common.base.Strings.nullToEmpty;
 
 /**
@@ -22,20 +24,32 @@ import static com.google.common.base.Strings.nullToEmpty;
  */
 public class LabeledDockerImage implements Describable<LabeledDockerImage> {
     public final String labelString;
-    private transient Set<LabelAtom> _labels;
-
+    public final String environmentVarString;
     public final String imageName;
 
+    private transient Set<LabelAtom> _labels;
+    private transient Map<String, String> _environmentVars;
+
     @DataBoundConstructor
-    public LabeledDockerImage(String imageName, String labelString) {
+    public LabeledDockerImage(String imageName, String labelString, String environmentVarString) {
         this.imageName = imageName;
         this.labelString = labelString;
+        this.environmentVarString = environmentVarString;
+    }
+
+    protected Object readResolve() {
+        _environmentVars = parseEnvVars(environmentVarString);
+        return this;
     }
 
     @Override
     @SuppressWarnings("unchecked")
     public hudson.model.Descriptor<LabeledDockerImage> getDescriptor() {
         return Jenkins.getInstance().getDescriptor(getClass());
+    }
+
+    public Map<String, String> getEnvironmentVars() {
+        return _environmentVars;
     }
 
     public Set<LabelAtom> getLabels() {
@@ -74,6 +88,15 @@ public class LabeledDockerImage implements Describable<LabeledDockerImage> {
             return nullToEmpty(value).trim().length() == 0
                     ? FormValidation.error("Required")
                     : FormValidation.ok();
+        }
+
+        public FormValidation doCheckEnvironmentVarString(@QueryParameter String value) {
+            try {
+                parseEnvVars(value);
+                return FormValidation.ok();
+            } catch (Exception ex) {
+                return FormValidation.error(ex.getMessage());
+            }
         }
     }
 }

@@ -204,11 +204,13 @@ public class DockerJobCloud extends Cloud {
         DockerJobProperty jobConfig = (DockerJobProperty) job.getProperty(DockerJobProperty.class);
         final String imageName = getImageName(jobConfig, result);
         boolean resetJob = false;
-        Map<String, String> jobEnv = ImmutableMap.of();
+        Map<String, String> jobEnv = result.environment;
 
         if (jobConfig != null) {
             resetJob = jobConfig.resetJobEnabled();
-            jobEnv = jobConfig.getEnvironmentVars();
+            jobEnv = ImmutableMap.<String, String>builder()
+                    .putAll(jobConfig.getEnvironmentVars())
+                    .putAll(jobEnv).build();
         }
 
         if (isNullOrEmpty(imageName)) {
@@ -275,7 +277,7 @@ public class DockerJobCloud extends Cloud {
                 return Optional.absent();
             } else {
                 LOG.log(FINE, "Condition matched cloud labels: condition={0} cloud={1} labels={2}", new Object[]{label, getDisplayName(), allLabels});
-                return Optional.of(new JobValidationResult(allLabels, null));
+                return Optional.of(new JobValidationResult(allLabels, null, ImmutableMap.<String, String>of()));
             }
         }
 
@@ -288,7 +290,7 @@ public class DockerJobCloud extends Cloud {
         // Check if the condition matches the cloud's labels
         if (label.matches(allLabels)) {
             LOG.log(FINE, "Condition matched cloud labels: condition={0} cloud={1} labels={2}", new Object[]{label, getDisplayName(), allLabels});
-            return Optional.of(new JobValidationResult(allLabels, null));
+            return Optional.of(new JobValidationResult(allLabels, null, ImmutableMap.<String, String>of()));
         }
 
         // Check if the condition matches the cloud's labels combined with a specific image
@@ -299,7 +301,7 @@ public class DockerJobCloud extends Cloud {
 
             if (label.matches(imageLabels)) {
                 LOG.log(FINE, "Condition matched cloud+image labels: condition={0} cloud={1} image={2} labels={3}", new Object[]{label, getDisplayName(), image.imageName, imageLabels});
-                return Optional.of(new JobValidationResult(imageLabels, image.imageName));
+                return Optional.of(new JobValidationResult(imageLabels, image.imageName, image.getEnvironmentVars()));
             } else {
                 LOG.log(FINE, "Condition does not match cloud+image labels: condition={0} cloud={1} image={2} labels={3}", new Object[]{label, getDisplayName(), image.imageName, imageLabels});
             }
@@ -572,10 +574,12 @@ public class DockerJobCloud extends Cloud {
     private static class JobValidationResult {
         private final Set<LabelAtom> labels;
         private final String imageName;
+        private final Map<String, String> environment;
 
-        public JobValidationResult(Set<LabelAtom> labels, String imageName) {
+        public JobValidationResult(Set<LabelAtom> labels, String imageName, Map<String, String> environment) {
             this.labels = labels;
             this.imageName = imageName;
+            this.environment = environment;
         }
     }
 
