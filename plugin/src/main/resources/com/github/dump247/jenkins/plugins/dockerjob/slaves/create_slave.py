@@ -12,6 +12,8 @@ import socket
 import threading
 import re
 import os
+import hashlib
+from functools import partial
 
 import docker
 
@@ -24,6 +26,17 @@ def message(value):
     sys.stderr.write(value)
     sys.stderr.write('\n')
     sys.stderr.flush()
+
+
+def hash_file(f):
+    hash = hashlib.md5()
+
+    if os.path.isfile(f):
+        with open(f, 'rb') as fh:
+            for buf in iter(partial(fh.read, 128), b''):
+                hash.update(buf)
+
+    return hash.hexdigest()
 
 
 def pull_job_image(docker_client, name):
@@ -260,7 +273,10 @@ def main(args):
     create_opts = {
         'image': options.image,
         'name': options.name,
-        'command': ['/bin/bash', install_dir + '/launch_slave.sh'],
+        # Include a hash of the init file in the command. The hash is not actually used by the
+        # launch script, but only included to ensure the command changes when the init script
+        # changes. This ensures that an init script change will cause the container to be recreated.
+        'command': ['/bin/bash', install_dir + '/launch_slave.sh', hash_file(slave_dir + '/init_slave.sh')],
         'volumes': [install_dir] + [v['container'] for v in options.volumes],
         'environment': options.environment
     }
