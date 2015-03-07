@@ -14,12 +14,14 @@ import re
 import os
 import hashlib
 from functools import partial
+import binascii
 
 import docker
 
 
 ENV_VAR_PATTERN = re.compile(r"^[a-zA-Z_][a-zA-Z_0-9]*?=.*$")
 VOLUME_PATTERN = re.compile(r"^(/.+?):(/.+?)(?::(.+))?$")
+INVALID_CONTAINER_CHARS = re.compile(r"[^a-zA-Z0-9.-]")  # _ is not here because is used as escape
 
 
 def message(value):
@@ -215,6 +217,16 @@ def volume(value):
     }
 
 
+def encode_container_name(name):
+    def encode_char(match):
+        ch = match.group(0)
+        # Put escape after invalid char to get around the fact that container name can not start
+        # with underscore.
+        return binascii.hexlify(ch.encode('utf-8')).zfill(4).decode('utf-8') + '_'
+
+    return INVALID_CONTAINER_CHARS.sub(encode_char, name)
+
+
 def main(args):
     parser = argparse.ArgumentParser(
         description=('Start a new Jenkins slave in a docker container. '
@@ -257,7 +269,9 @@ def main(args):
     server_address = slave_config['CONNECT_ADDRESS']
     server_port = int(slave_config['CONNECT_PORT'])
 
-    message('Creating slave container for job "{}"'.format(options.name))
+    container_name = encode_container_name(options.name)
+
+    message('Creating slave container for job "{}" (container={})'.format(options.name, container_name))
 
     # TODO override docker url in configuration
     # TODO use minimum possible API version?
@@ -267,12 +281,12 @@ def main(args):
     pull_job_image(docker_client, options.image)
 
     # Check if container exists or needs to be updated
-    container_info = find_job_container(docker_client, options.name)
+    container_info = find_job_container(docker_client, container_name)
 
     create_container = True
     create_opts = {
         'image': options.image,
-        'name': options.name,
+        'name': container_name,
         # Include a hash of the init file in the command. The hash is not actually used by the
         # launch script, but only included to ensure the command changes when the init script
         # changes. This ensures that an init script change will cause the container to be recreated.
