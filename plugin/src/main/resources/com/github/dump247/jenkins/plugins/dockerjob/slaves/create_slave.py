@@ -21,6 +21,9 @@ import docker
 
 ENV_VAR_PATTERN = re.compile(r"^[a-zA-Z_][a-zA-Z_0-9]*?=.*$")
 VOLUME_PATTERN = re.compile(r"^(/.+?):(/.+?)(?::(.+))?$")
+
+INVALID_CONTAINER_ESCAPE = '_'
+INVALID_INITIAL_CONTAINER_CHAR = re.compile(r"[^a-zA-Z0-9]")
 INVALID_CONTAINER_CHARS = re.compile(r"[^a-zA-Z0-9.-]")  # _ is not here because is used as escape
 
 
@@ -217,14 +220,18 @@ def volume(value):
     }
 
 
-def encode_container_name(name):
-    def encode_char(match):
-        ch = match.group(0)
-        # Put escape after invalid char to get around the fact that container name can not start
-        # with underscore.
-        return binascii.hexlify(ch.encode('utf-8')).zfill(4).decode('utf-8') + '_'
+def escape_container_char(ch):
+    return binascii.hexlify(ch.encode('utf-8')).zfill(4).decode('utf-8') + INVALID_CONTAINER_ESCAPE
 
-    return INVALID_CONTAINER_CHARS.sub(encode_char, name)
+
+def encode_container_name(name):
+    first = name[0]
+    rest = name[1:]
+
+    if INVALID_INITIAL_CONTAINER_CHAR.match(first):
+        first = escape_container_char(first)
+
+    return first + INVALID_CONTAINER_CHARS.sub(lambda m: escape_container_char(m.group(0)), rest)
 
 
 def main(args):
