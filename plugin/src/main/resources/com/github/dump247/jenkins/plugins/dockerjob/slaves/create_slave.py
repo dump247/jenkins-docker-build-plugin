@@ -196,13 +196,20 @@ def run_server(server_socket):
 
 
 def env_var(value):
+    value = decode_arg(value)
+
     if not ENV_VAR_PATTERN.match(value):
         raise argparse.ArgumentTypeError("{} is not a valid environment variable".format(value))
 
     return value
 
 
+def decode_arg(value):
+    return os.fsencode(value).decode('iso-8859-1')
+
+
 def volume(value):
+    value = decode_arg(value)
     match = VOLUME_PATTERN.match(value)
 
     if not match:
@@ -241,10 +248,12 @@ def main(args):
                      'Messages related to managing the slave container are written to stderr.'))
     parser.add_argument('--image',
                         help='Docker image to launch to slave in.',
-                        required=True)
+                        required=True,
+                        type=decode_arg)
     parser.add_argument('--name',
                         help='Name of the job. This will become the docker container name.',
-                        required=True)
+                        required=True,
+                        type=decode_arg)
     parser.add_argument('--clean',
                         help=('Always create a new container. '
                               'The default is to reuse a previous job container if it exists and '
