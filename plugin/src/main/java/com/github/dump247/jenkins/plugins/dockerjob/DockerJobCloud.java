@@ -10,6 +10,7 @@ import com.github.dump247.jenkins.plugins.dockerjob.slaves.DirectoryMapping;
 import com.github.dump247.jenkins.plugins.dockerjob.slaves.SlaveClient;
 import com.github.dump247.jenkins.plugins.dockerjob.slaves.SlaveOptions;
 import com.github.dump247.jenkins.plugins.dockerjob.util.ConfigUtil;
+import com.github.dump247.jenkins.plugins.dockerjob.util.JenkinsUtils;
 import com.github.dump247.jenkins.plugins.dockerjob.util.SshCredentialsProvider;
 import com.google.common.base.Function;
 import com.google.common.base.Optional;
@@ -46,6 +47,7 @@ import org.joda.time.Instant;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.QueryParameter;
 
+import java.io.IOException;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
@@ -56,7 +58,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.logging.Logger;
 
-import static com.github.dump247.jenkins.plugins.dockerjob.util.JenkinsUtils.getNodes;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Strings.isNullOrEmpty;
@@ -216,8 +217,7 @@ public class DockerJobCloud extends Cloud {
             throw new RuntimeException(format("Unable to find docker image for job %s", jobName));
         }
 
-        final SlaveClient host = getFirst(listAvailableHosts(), null);
-        if (host == null) {
+        if (availableCapacity() <= 0) {
             return ProvisionResult.NO_CAPACITY;
         }
 
@@ -235,7 +235,7 @@ public class DockerJobCloud extends Cloud {
                         .addAll(result.labels)
                         .add(new LabelAtom("image/" + imageName))
                         .build(),
-                new DockerJobComputerLauncher(host, options));
+                new DockerJobComputerLauncher(getDisplayName(), options));
 
         _jenkins.addNode(slave);
 
@@ -246,13 +246,32 @@ public class DockerJobCloud extends Cloud {
                     Computer slaveComputer = slave.toComputer();
                     slaveComputer.connect(false).get();
                 } catch (Exception ex) {
-                    LOG.log(SEVERE, format("Error provisioning docker slave: job=%s image=%s endpoint=%s", jobName, imageName, host.getHost()), ex);
+                    LOG.log(SEVERE, format("Error provisioning docker slave: job=%s image=%s", jobName, imageName), ex);
                     throw Throwables.propagate(ex);
                 }
             }
         });
 
         return ProvisionResult.SUCCESS;
+    }
+
+    public SlaveClient.SlaveConnection createSlave(SlaveOptions options) throws IOException {
+        List<CapacityCount> successfulHosts = FluentIterable.from(listHosts())
+                .filter(SUCCESSFUL_HOSTS)
+                .transform(new Function<HostState, CapacityCount>() {
+                    public CapacityCount apply(HostState input) {
+                        return new CapacityCount(input.client, _maxJobsPerHost - input.client.sessionCount());
+                    }
+                })
+                .toSortedList(CAPACITY_ORDER);
+
+        CapacityCount host = getFirst(successfulHosts, null);
+
+        if (host == null) {
+            throw new RuntimeException("No available hosts to create slave");
+        }
+
+        return host.client.createSlave(options);
     }
 
     private static String getImageName(DockerJobProperty jobConfig, JobValidationResult result) {
@@ -310,32 +329,17 @@ public class DockerJobCloud extends Cloud {
         return Optional.absent();
     }
 
-    /**
-     * List hosts in this cloud that have capacity to launch a job. Hosts are listed from greatest
-     * to least available capacity.
-     */
-    private List<SlaveClient> listAvailableHosts() {
-        Iterable<SlaveClient> successfulHosts = FluentIterable.from(listHosts())
-                .filter(SUCCESSFUL_HOSTS)
-                .transform(GET_CLIENT);
-        Map<HostAndPort, CapacityCount> cloudHosts = newHashMap();
+    private int availableCapacity() {
+        int maxCapacity = FluentIterable.from(listHosts()).filter(SUCCESSFUL_HOSTS).size() * _maxJobsPerHost;
+        int currentUsage = JenkinsUtils.getNodes(_jenkins, DockerJobSlave.class)
+                .filter(new Predicate<DockerJobSlave>() {
+                    public boolean apply(DockerJobSlave input) {
+                        return input.getLauncher().getCloudName().equals(getDisplayName());
+                    }
+                })
+                .size();
 
-        for (SlaveClient host : successfulHosts) {
-            cloudHosts.put(host.getHost(), new CapacityCount(host, _maxJobsPerHost));
-        }
-
-        for (DockerJobSlave slave : getNodes(_jenkins, DockerJobSlave.class)) {
-            CapacityCount count = cloudHosts.get(slave.getLauncher().getHost());
-
-            if (count != null) {
-                count.remaining -= 1;
-            }
-        }
-
-        return FluentIterable.from(CAPACITY_ORDER.sortedCopy(cloudHosts.values()))
-                .filter(HAS_CAPACITY)
-                .transform(GET_CLIENT2)
-                .toList();
+        return maxCapacity - currentUsage;
     }
 
     private Collection<HostState> listHosts() {
@@ -590,30 +594,6 @@ public class DockerJobCloud extends Cloud {
     private static final Predicate<HostState> SUCCESSFUL_HOSTS = new Predicate<HostState>() {
         public boolean apply(HostState input) {
             return input.status == HostStatus.SUCCESS;
-        }
-    };
-
-    private static final Function<SlaveClient, HostAndPort> GET_HOST = new Function<SlaveClient, HostAndPort>() {
-        public HostAndPort apply(SlaveClient input) {
-            return input.getHost();
-        }
-    };
-
-    private static final Function<HostState, SlaveClient> GET_CLIENT = new Function<HostState, SlaveClient>() {
-        public SlaveClient apply(HostState input) {
-            return input.client;
-        }
-    };
-
-    private static final Predicate<CapacityCount> HAS_CAPACITY = new Predicate<CapacityCount>() {
-        public boolean apply(CapacityCount input) {
-            return input.remaining > 0;
-        }
-    };
-
-    private static final Function<CapacityCount, SlaveClient> GET_CLIENT2 = new Function<CapacityCount, SlaveClient>() {
-        public SlaveClient apply(CapacityCount input) {
-            return input.client;
         }
     };
 

@@ -2,14 +2,16 @@ package com.github.dump247.jenkins.plugins.dockerjob;
 
 import com.github.dump247.jenkins.plugins.dockerjob.slaves.SlaveClient;
 import com.github.dump247.jenkins.plugins.dockerjob.slaves.SlaveOptions;
+import com.github.dump247.jenkins.plugins.dockerjob.util.JenkinsUtils;
 import com.google.common.base.Charsets;
+import com.google.common.base.Optional;
 import com.google.common.base.Throwables;
-import com.google.common.net.HostAndPort;
 import hudson.Extension;
 import hudson.model.TaskListener;
 import hudson.remoting.Channel;
 import hudson.slaves.ComputerLauncher;
 import hudson.slaves.SlaveComputer;
+import jenkins.model.Jenkins;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -25,22 +27,28 @@ import static java.util.logging.Level.WARNING;
 public class DockerJobComputerLauncher extends ComputerLauncher {
     private static final Logger LOG = Logger.getLogger(DockerJobComputerLauncher.class.getName());
 
-    private final SlaveClient _client;
+    private final String _cloudName;
     private final SlaveOptions _options;
 
-    public DockerJobComputerLauncher(SlaveClient client, SlaveOptions options) {
-        _client = client;
+    public DockerJobComputerLauncher(String cloudName, SlaveOptions options) {
+        _cloudName = cloudName;
         _options = options;
     }
 
-    public HostAndPort getHost() {
-        return _client.getHost();
+    public String getCloudName() {
+        return _cloudName;
     }
 
     @Override
     public void launch(SlaveComputer computer, final TaskListener listener) throws IOException, InterruptedException {
         LOG.log(FINE, "Starting slave for {0}", _options.getName());
-        final SlaveClient.SlaveConnection connection = _client.createSlave(_options);
+        Optional<DockerJobCloud> cloud = JenkinsUtils.getCloud(Jenkins.getInstance(), DockerJobCloud.class, _cloudName);
+
+        if (!cloud.isPresent()) {
+            throw new RuntimeException("Unable to find cloud to launch slave: " + _cloudName);
+        }
+
+        final SlaveClient.SlaveConnection connection = cloud.get().createSlave(_options);
 
         final Thread logReader = new Thread(new Runnable() {
             @Override

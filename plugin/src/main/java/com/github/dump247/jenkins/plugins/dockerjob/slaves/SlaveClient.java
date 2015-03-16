@@ -62,11 +62,21 @@ public class SlaveClient {
         return _host;
     }
 
+    public synchronized int sessionCount() {
+        int total = 0;
+
+        for (SessionCount connection : _connections) {
+            total += connection.sessionCount;
+        }
+
+        return total;
+    }
+
     public Provider<StandardUsernameCredentials> getCredentialsProvider() {
         return _credentialsProvider;
     }
 
-    public void close() {
+    public synchronized void close() {
         for (SessionCount count : _connections) {
             count.connection.close();
         }
