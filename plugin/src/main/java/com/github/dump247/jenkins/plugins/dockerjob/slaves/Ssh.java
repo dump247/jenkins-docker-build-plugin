@@ -123,6 +123,10 @@ public class Ssh {
         return value;
     }
 
+    public static String quoteCommand(String... command) {
+        return quoteCommand(asList(command));
+    }
+
     public static String quoteCommand(List<String> command) {
         StringBuilder result = new StringBuilder();
 

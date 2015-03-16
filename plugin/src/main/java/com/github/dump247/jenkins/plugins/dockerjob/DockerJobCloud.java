@@ -356,7 +356,7 @@ public class DockerJobCloud extends Cloud {
                 for (HostAndPort host : hosts) {
                     final HostAndPort targetHost = host.withDefaultPort(_sshPort);
 
-                    HostState currentState = _hosts.get(targetHost);
+                    final HostState currentState = _hosts.get(targetHost);
 
                     if (currentState == null || currentState.status == HostStatus.FAILED) {
                         hostFutures.add(EXECUTOR.submit(new Callable<HostState>() {
@@ -379,7 +379,19 @@ public class DockerJobCloud extends Cloud {
                             }
                         }));
                     } else {
-                        newHosts.put(targetHost, currentState);
+                        // Ping the server to make sure it is still up
+                        hostFutures.add(EXECUTOR.submit(new Callable<HostState>() {
+                            @Override
+                            public HostState call() throws Exception {
+                                try {
+                                    currentState.client.ping();
+                                    return currentState;
+                                } catch (Exception ex) {
+                                    currentState.client.close();
+                                    return HostState.failed(targetHost, ex);
+                                }
+                            }
+                        }));
                     }
                 }
 

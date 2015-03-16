@@ -4,6 +4,7 @@ import com.cloudbees.plugins.credentials.common.StandardUsernameCredentials;
 import com.google.common.base.Charsets;
 import com.google.common.net.HostAndPort;
 import com.google.inject.Provider;
+import com.trilead.ssh2.ChannelCondition;
 import com.trilead.ssh2.Connection;
 import com.trilead.ssh2.SFTPv3Client;
 import com.trilead.ssh2.Session;
@@ -70,6 +71,25 @@ public class SlaveClient {
         }
 
         return total;
+    }
+
+    public void ping() throws IOException {
+        String commandString = Ssh.quoteCommand("true");
+        SlaveConnection session = openSession();
+
+        try {
+            session._session.execCommand(commandString);
+            session._session.waitForCondition(ChannelCondition.EXIT_STATUS, 5000);
+            Integer exitStatus = session._session.getExitStatus();
+
+            if (exitStatus == null || exitStatus != 0) {
+                throw new RuntimeException("Unknown error pinging host");
+            }
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+        } finally {
+            closeSession(session);
+        }
     }
 
     public Provider<StandardUsernameCredentials> getCredentialsProvider() {
