@@ -2,5 +2,7 @@
   This view is used to render the installed plugins page.
 -->
 <div>
-  Run jobs in <a href="http://www.docker.io">Docker</a> containers.
+    Run jobs in
+    <a href="http://www.docker.io">Docker</a>
+    containers.
 </div>

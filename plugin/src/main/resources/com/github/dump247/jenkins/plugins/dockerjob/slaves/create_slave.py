@@ -287,7 +287,8 @@ def main(args):
 
     container_name = encode_container_name(options.name)
 
-    message('Creating slave container for job "{}" (container={})'.format(options.name, container_name))
+    message(
+        'Creating slave container for job "{}" (container={})'.format(options.name, container_name))
 
     # TODO override docker url in configuration
     # TODO use minimum possible API version?
@@ -306,7 +307,8 @@ def main(args):
         # Include a hash of the init file in the command. The hash is not actually used by the
         # launch script, but only included to ensure the command changes when the init script
         # changes. This ensures that an init script change will cause the container to be recreated.
-        'command': ['/bin/bash', install_dir + '/launch_slave.sh', hash_file(slave_dir + '/init_slave.sh')],
+        'command': ['/bin/bash', install_dir + '/launch_slave.sh',
+                    hash_file(slave_dir + '/init_slave.sh')],
         'volumes': [install_dir] + [v['container'] for v in options.volumes],
         'environment': options.environment
     }
