@@ -13,9 +13,12 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.URL;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.logging.Logger;
 
 import static com.github.dump247.jenkins.plugins.dockerjob.slaves.Sftp.writeFile;
@@ -34,84 +37,43 @@ import static org.joda.time.Duration.standardSeconds;
  * Client that connects to a slave host machine and launches slave docker containers.
  */
 public class SlaveClient {
-    private static final int DEFAULT_MAX_SESSIONS = 5;
     private static final Logger LOG = Logger.getLogger(SlaveClient.class.getName());
 
-    private final HostAndPort _host;
-    private final Provider<StandardUsernameCredentials> _credentialsProvider;
-
-    /**
-     * Maximum number of sessions to open on a connection before creating a new connection.
-     */
-    private final int _maxSessions;
-
-    private List<SessionCount> _connections = newArrayList();
+    private final SshClient _sshClient;
+    private final Map<String, Set<Integer>> _activeJobRunNumbers = new HashMap<String, Set<Integer>>();
 
     public SlaveClient(HostAndPort host, Provider<StandardUsernameCredentials> credentialsProvider) {
-        this(host, credentialsProvider, DEFAULT_MAX_SESSIONS);
+        _sshClient = new SshClient(host, credentialsProvider);
     }
 
     public SlaveClient(HostAndPort host, Provider<StandardUsernameCredentials> credentialsProvider, int maxSessions) {
-        _host = checkNotNull(host);
-        _credentialsProvider = checkNotNull(credentialsProvider);
-        _maxSessions = maxSessions;
-
-        checkArgument(maxSessions > 0);
+        _sshClient = new SshClient(host, credentialsProvider, maxSessions);
     }
 
     public HostAndPort getHost() {
-        return _host;
+        return _sshClient.getHost();
     }
 
-    public synchronized int sessionCount() {
-        int total = 0;
-
-        for (SessionCount connection : _connections) {
-            total += connection.sessionCount;
-        }
-
-        return total;
+    public int sessionCount() {
+        return _sshClient.sessionCount();
     }
 
     public void ping() throws IOException {
-        String commandString = Ssh.quoteCommand("true");
-        SlaveConnection session = openSession();
-
-        try {
-            session._session.execCommand(commandString);
-            session._session.waitForCondition(ChannelCondition.EXIT_STATUS, 5000);
-            Integer exitStatus = session._session.getExitStatus();
-
-            if (exitStatus == null || exitStatus != 0) {
-                throw new RuntimeException("Unknown error pinging host");
-            }
-        } catch (InterruptedException ex) {
-            Thread.currentThread().interrupt();
-        } finally {
-            closeSession(session);
-        }
+        _sshClient.ping();
     }
 
-    public Provider<StandardUsernameCredentials> getCredentialsProvider() {
-        return _credentialsProvider;
-    }
-
-    public synchronized void close() {
-        for (SessionCount count : _connections) {
-            count.connection.close();
-        }
-
-        _connections.clear();
+    public void close() {
+        _sshClient.close();
     }
 
     public String initialize(URL slaveJarUrl, String slaveInitScript) throws IOException {
         Connection connection = null;
         SFTPv3Client ftp = null;
 
-        LOG.log(FINE, "Initializing {0}", _host);
+        LOG.log(FINE, "Initializing {0}", getHost());
 
         try {
-            connection = Ssh.connect(_host, _credentialsProvider.get());
+            connection = _sshClient.connect();
             ftp = new SFTPv3Client(connection);
 
             writeResource(ftp, getClass(), "init_host.sh", "/var/lib/jenkins-docker/init_host.sh");
@@ -148,8 +110,27 @@ public class SlaveClient {
     }
 
     public SlaveConnection createSlave(SlaveOptions options) throws IOException {
+        String runName;
+        int runNumber;
+
+        synchronized (_activeJobRunNumbers) {
+            Set<Integer> runNumbers = _activeJobRunNumbers.get(options.getName());
+
+            if (runNumbers == null) {
+                runNumbers = new HashSet<Integer>();
+                _activeJobRunNumbers.put(options.getName(), runNumbers);
+            }
+
+            runNumber = 1;
+            while (!runNumbers.add(runNumber)) {
+                runNumber += 1;
+            }
+
+            runName = options.getName() + "-" + runNumber;
+        }
+
         List<String> command = newArrayList("python3", "/var/lib/jenkins-docker/create_slave.py",
-                "--name", options.getName(),
+                "--name", runName,
                 "--image", options.getImage());
 
         if (options.isCleanEnvironment()) {
@@ -168,84 +149,27 @@ public class SlaveClient {
 
         LOG.log(FINER, "Running: {0}", command);
         String commandString = Ssh.quoteCommand(command);
-        SlaveConnection session = openSession();
+        SlaveConnection connection = new SlaveConnection(_sshClient.createSession(), options.getName(), runNumber);
 
         try {
-            session._session.execCommand(commandString);
-            return session;
+            connection._session.execCommand(commandString);
+            return connection;
         } catch (IOException ex) {
-            closeSession(session);
+            connection.close();
             throw ex;
         }
     }
 
-    private synchronized SlaveConnection openSession() throws IOException {
-        SessionCount selected = null;
-
-        // Find connection with most sessions, but still less than max. This maximizes the number
-        // of sessions per connection to minimize open connections.
-        for (SessionCount count : _connections) {
-            if (count.sessionCount < _maxSessions) {
-                if (selected == null || selected.sessionCount < count.sessionCount) {
-                    selected = count;
-                }
-            }
-        }
-
-        if (selected == null) {
-            LOG.log(FINE, "Opening connection to {0}", _host);
-            selected = new SessionCount(Ssh.connect(_host, _credentialsProvider.get()));
-            _connections.add(selected);
-        }
-
-        LOG.log(FINER, "Opening session to {0}", _host);
-        Session session = selected.connection.openSession();
-        selected.sessionCount += 1;
-        return new SlaveConnection(selected.connection, session);
-    }
-
-    private synchronized void closeSession(SlaveConnection session) {
-        int emptyConnections = 0;
-
-        LOG.log(FINER, "Closing session to {0}", _host);
-        session._session.close();
-
-        Iterator<SessionCount> iter = _connections.iterator();
-        while (iter.hasNext()) {
-            SessionCount count = iter.next();
-
-            if (count.connection == session._connection) {
-                count.sessionCount -= 1;
-            }
-
-            // Close the second connection that has no active sessions and any empty connection
-            // after that. Keep one connection with no sessions for additional capacity.
-            if (count.sessionCount == 0) {
-                emptyConnections += 1;
-
-                if (emptyConnections > 1) {
-                    LOG.log(FINE, "Closing connection to {0}", _host);
-                    count.connection.close();
-                    iter.remove();
-                }
-            }
-        }
-    }
-
     public class SlaveConnection {
-        private final Session _session;
-        private final Connection _connection;
+        private final SshClient.SshSession _session;
+        private final String _jobName;
+        private final int _runNumber;
         private boolean _closed;
 
-        public SlaveConnection(Connection connection, Session session) {
-            _connection = connection;
+        private SlaveConnection(SshClient.SshSession session, String jobName, int runNumber) {
             _session = session;
-        }
-
-        @Override
-        protected void finalize() throws Throwable {
-            super.finalize();
-            close();
+            _jobName = jobName;
+            _runNumber = runNumber;
         }
 
         public InputStream getOutput() {
@@ -260,20 +184,30 @@ public class SlaveClient {
             return _session.getStderr();
         }
 
+        @Override
+        protected void finalize() throws Throwable {
+            super.finalize();
+            close();
+        }
+
         public synchronized void close() {
             if (!_closed) {
                 _closed = true;
-                closeSession(this);
+
+                synchronized (_activeJobRunNumbers) {
+                    Set<Integer> runNumbers = _activeJobRunNumbers.get(_jobName);
+
+                    if (runNumbers != null) {
+                        runNumbers.remove(_runNumber);
+
+                        if (runNumbers.isEmpty()) {
+                            _activeJobRunNumbers.remove(_jobName);
+                        }
+                    }
+                }
+
+                _session.close();
             }
-        }
-    }
-
-    private static class SessionCount {
-        public final Connection connection;
-        public int sessionCount;
-
-        public SessionCount(Connection connection) {
-            this.connection = connection;
         }
     }
 }
