@@ -115,18 +115,36 @@ public class DockerJobLoadBalancer extends LoadBalancer {
 
         if (mappedCount == 0) {
             mapping = _fallback.map(task, worksheet);
+
+            if (mapping == null || !mapping.isCompletelyValid()) {
+                return null;
+            }
+
+            for (int i = 0; i < mapping.size(); i++) {
+                // Fallback can not assign to docker job slaves
+                if (mapping.assigned(i).node instanceof DockerJobSlave) {
+                    return null;
+                }
+            }
+
+            return mapping;
         } else if (mappedCount < worksheet.works.size()) {
             LOG.log(WARNING, "Unable to launch job node because one or more tasks could not be mapped to a docker cloud. Mixed Docker and normal jobs are not supported. Job={0}", task.getFullDisplayName());
+            return null;
+        } else if (!mapping.isCompletelyValid()) {
+            return null;
         }
 
-        return mapping != null && mapping.isCompletelyValid()
-                ? mapping
-                : null;
+        for (int i = 0; i < mapping.size(); i++) {
+            ((DockerJobSlave) mapping.assigned(i).node).isMapped = true;
+        }
+
+        return mapping;
     }
 
     private DockerJobSlave findSlave(String jobName) {
         for (DockerJobSlave slave : getNodes(_jenkins, DockerJobSlave.class)) {
-            if (slave.getNodeName().equals(jobName)) {
+            if (!slave.isMapped && slave.getNodeName().equals(jobName)) {
                 return slave;
             }
         }

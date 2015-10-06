@@ -27,6 +27,8 @@ public class DockerJobSlave extends Slave implements EphemeralNode {
     private static final Logger LOG = Logger.getLogger(DockerJobSlave.class.getName());
     private static final Joiner LABEL_JOINER = Joiner.on(' ');
 
+    public boolean isMapped;
+
     public DockerJobSlave(@Nonnull String name, String nodeDescription, String remoteFS, Set<LabelAtom> labels, DockerJobComputerLauncher launcher) throws Descriptor.FormException, IOException {
         super(name,
                 nodeDescription,
