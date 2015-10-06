@@ -76,7 +76,7 @@ public class DockerJobComputer extends SlaveComputer {
     }
 
     public void terminate() {
-        LOG.log(FINE, "Terminating job: name={0}", _slave.getNodeName());
+        LOG.log(FINE, "Terminating job node: name={0}", _slave.getNodeName());
         _hasCompletedJob = true;
 
         try {

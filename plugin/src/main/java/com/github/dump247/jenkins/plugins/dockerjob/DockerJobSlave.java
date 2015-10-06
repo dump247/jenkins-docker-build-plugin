@@ -28,9 +28,10 @@ public class DockerJobSlave extends Slave implements EphemeralNode {
     private static final Joiner LABEL_JOINER = Joiner.on(' ');
 
     public boolean isMapped;
+    public final String jobName;
 
-    public DockerJobSlave(@Nonnull String name, String nodeDescription, String remoteFS, Set<LabelAtom> labels, DockerJobComputerLauncher launcher) throws Descriptor.FormException, IOException {
-        super(name,
+    public DockerJobSlave(@Nonnull String nodeName, String nodeDescription, String jobName, String remoteFS, Set<LabelAtom> labels, DockerJobComputerLauncher launcher) throws Descriptor.FormException, IOException {
+        super(nodeName,
                 nodeDescription,
                 remoteFS,
                 1,
@@ -39,6 +40,8 @@ public class DockerJobSlave extends Slave implements EphemeralNode {
                 launcher,
                 new DockerJobRetentionStrategy(),
                 ImmutableList.<NodeProperty<?>>of());
+
+        this.jobName = jobName;
     }
 
     @Override

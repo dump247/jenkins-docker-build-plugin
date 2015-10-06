@@ -144,7 +144,7 @@ public class DockerJobLoadBalancer extends LoadBalancer {
 
     private DockerJobSlave findSlave(String jobName) {
         for (DockerJobSlave slave : getNodes(_jenkins, DockerJobSlave.class)) {
-            if (!slave.isMapped && slave.getNodeName().equals(jobName)) {
+            if (!slave.isMapped && slave.jobName.equals(jobName)) {
                 return slave;
             }
         }

@@ -42,6 +42,7 @@ import hudson.slaves.NodeProvisioner;
 import hudson.util.FormValidation;
 import hudson.util.ListBoxModel;
 import jenkins.model.Jenkins;
+import org.apache.commons.lang.RandomStringUtils;
 import org.joda.time.Duration;
 import org.joda.time.Instant;
 import org.kohsuke.stapler.DataBoundConstructor;
@@ -228,8 +229,9 @@ public class DockerJobCloud extends Cloud {
         options.setDirectoryMappings(_directoryMappings);
 
         final DockerJobSlave slave = new DockerJobSlave(
-                jobName,
+                jobName + '-' + RandomStringUtils.random(6, true, true),
                 "Job running in docker container",
+                jobName,
                 "/",
                 ImmutableSet.<LabelAtom>builder()
                         .addAll(result.labels)
