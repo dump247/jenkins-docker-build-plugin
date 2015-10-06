@@ -32,7 +32,7 @@ public class DockerJobSlave extends Slave implements EphemeralNode {
                 nodeDescription,
                 remoteFS,
                 1,
-                Mode.EXCLUSIVE,
+                Mode.NORMAL,
                 LABEL_JOINER.join(labels),
                 launcher,
                 new DockerJobRetentionStrategy(),

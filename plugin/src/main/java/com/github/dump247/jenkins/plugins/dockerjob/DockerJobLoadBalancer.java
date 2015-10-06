@@ -105,7 +105,7 @@ public class DockerJobLoadBalancer extends LoadBalancer {
             if (taskSlave != null) {
                 mappedCount += 1;
 
-                MappingWorksheet.ExecutorChunk executor = findExecutor(workChunk, taskSlave);
+                MappingWorksheet.ExecutorChunk executor = findExecutor(worksheet, taskSlave);
 
                 if (executor != null) {
                     mapping.assign(workIndex, executor);
@@ -134,8 +134,8 @@ public class DockerJobLoadBalancer extends LoadBalancer {
         return null;
     }
 
-    private MappingWorksheet.ExecutorChunk findExecutor(MappingWorksheet.WorkChunk task, DockerJobSlave slave) {
-        for (MappingWorksheet.ExecutorChunk executor : task.applicableExecutorChunks()) {
+    private MappingWorksheet.ExecutorChunk findExecutor(MappingWorksheet worksheet, DockerJobSlave slave) {
+        for (MappingWorksheet.ExecutorChunk executor : worksheet.executors) {
             if (executor.node == slave) {
                 return executor;
             }
