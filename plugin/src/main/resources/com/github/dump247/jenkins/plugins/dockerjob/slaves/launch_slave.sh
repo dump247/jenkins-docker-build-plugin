@@ -9,8 +9,8 @@ function create_user {
     local group=${3}
     local home=${4}
 
-    local info=$(getent passwd ${uid}) || :
-    if [[ $? -eq 0 ]]; then
+    local info
+    if info=$(getent passwd ${uid}); then
         user=$(echo "${info}" | cut -d: -f1)
     else
         useradd --system                            \
@@ -29,8 +29,8 @@ function create_group {
     local group=${1}
     local gid=${2}
 
-    local info=$(getent group ${gid}) || :
-    if [[ $? -eq 0 ]]; then
+    local info
+    if info=$(getent group ${gid}); then
         group=$(echo "${info}" | cut -d: -f1)
     else
         groupadd --system                           \
@@ -49,8 +49,8 @@ JENKINS_UID=5000
 JENKINS_USER=jenkins
 JENKINS_HOME=/var/lib/jenkins
 
-JENKINS_GROUP=$(create_group ${JENKINS_GROUP} ${JENKINS_GID})
-JENKINS_USER=$(create_user ${JENKINS_USER} ${JENKINS_UID} ${JENKINS_GROUP} ${JENKINS_HOME})
+JENKINS_GROUP=$(create_group "${JENKINS_GROUP}" "${JENKINS_GID}")
+JENKINS_USER=$(create_user "${JENKINS_USER}" "${JENKINS_UID}" "${JENKINS_GROUP}" "${JENKINS_HOME}")
 
 [ -d ${JENKINS_HOME} ] || mkdir --parents ${JENKINS_HOME}
 chown --recursive ${JENKINS_USER}:${JENKINS_GROUP} ${JENKINS_HOME}
